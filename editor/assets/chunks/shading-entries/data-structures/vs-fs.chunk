@@ -11,11 +11,11 @@ CC_SURFACES_VARING_MODIFIER vec2 v_uv;
   CC_SURFACES_VARING_MODIFIER mediump vec4 v_tangent;
 #endif
 
-#if CC_SURFACES_USE_SECOND_UV && !CC_USE_LIGHTMAP
+#if CC_SURFACES_USE_SECOND_UV
   CC_SURFACES_VARING_MODIFIER mediump vec2 v_uv1;
 #endif
 
-#if CC_USE_LIGHTMAP && !USE_BATCHING && !CC_FORWARD_ADD
+#if CC_USE_LIGHTMAP && !CC_FORWARD_ADD
   CC_SURFACES_VARING_MODIFIER mediump vec3 v_luv;
 #endif
 
@@ -24,9 +24,17 @@ CC_SURFACES_VARING_MODIFIER vec2 v_uv;
 #endif
 
 #if CC_USE_FOG != CC_FOG_NONE && !CC_USE_ACCURATE_FOG
-  CC_SURFACES_VARING_MODIFIER float v_fogFactor;
+  CC_SURFACES_VARING_MODIFIER mediump float v_fogFactor;
 #endif
 
 #if CC_SURFACES_TRANSFER_LOCAL_POS
   CC_SURFACES_VARING_MODIFIER highp vec4 v_localPos;
+#endif
+
+#if CC_USE_LIGHT_PROBE
+  #if USE_INSTANCING
+    CC_SURFACES_VARING_MODIFIER mediump vec4 v_sh_linear_const_r;
+    CC_SURFACES_VARING_MODIFIER mediump vec4 v_sh_linear_const_g;
+    CC_SURFACES_VARING_MODIFIER mediump vec4 v_sh_linear_const_b;
+  #endif
 #endif

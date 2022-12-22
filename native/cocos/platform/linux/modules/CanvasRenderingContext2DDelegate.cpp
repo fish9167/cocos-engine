@@ -39,7 +39,7 @@ static const char gdefaultFontName[] = "lucidasans-24";
 
 CanvasRenderingContext2DDelegate::CanvasRenderingContext2DDelegate() {
     SystemWindow *window = BasePlatform::getPlatform()->getInterface<SystemWindow>();
-    CC_ASSERT(window != nullptr);
+    CC_ASSERT_NOT_NULL(window);
     _dis = reinterpret_cast<Display *>(window->getDisplay());
     _win = reinterpret_cast<Drawable>(window->getWindowHandle());
 }
@@ -222,12 +222,12 @@ void CanvasRenderingContext2DDelegate::setTextBaseline(TextBaseline baseline) {
     _textBaseLine = baseline;
 }
 
-void CanvasRenderingContext2DDelegate::setFillStyle(float r, float g, float b, float a) {
-    _fillStyle = RGBA(r * 255, g * 255, b * 255, a * 255);
+void CanvasRenderingContext2DDelegate::setFillStyle(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+    _fillStyle = RGBA(r, g, b, a);
 }
 
-void CanvasRenderingContext2DDelegate::setStrokeStyle(float r, float g, float b, float a) {
-    _strokeStyle = RGBA(r * 255, g * 255, b * 255, a * 255);
+void CanvasRenderingContext2DDelegate::setStrokeStyle(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+    _strokeStyle = RGBA(r, g, b, a);
 }
 
 void CanvasRenderingContext2DDelegate::setLineWidth(float lineWidth) {

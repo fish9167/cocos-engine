@@ -25,19 +25,17 @@
 */
 
 import { ccclass, help, executionOrder, menu, executeInEditMode } from 'cc.decorator';
-import { JSB } from 'internal:constants';
-import { ModelRenderer } from '../../core/components/model-renderer';
-import { RenderPriority } from '../../core/pipeline/define';
+import { DEBUG, JSB } from 'internal:constants';
+import { ModelRenderer } from '../../misc/model-renderer';
+import { RenderPriority } from '../../rendering/define';
 import { IBatcher } from '../renderer/i-batcher';
 import { Stage } from '../renderer/stencil-manager';
-import { Component } from '../../core/components';
-import { legacyCC } from '../../core/global-exports';
+import { Component } from '../../scene-graph/component';
 import { NativeUIModelProxy } from '../renderer/native-2d';
 import { uiRendererManager } from '../framework/ui-renderer-manager';
 import { RenderEntity, RenderEntityType } from '../renderer/render-entity';
-import { director } from '../../core/director';
 import { MeshRenderData, RenderData } from '../renderer/render-data';
-import { assert } from '../../core';
+import { assert, cclegacy } from '../../core';
 import { RenderDrawInfoType } from '../renderer/render-draw-info';
 
 /**
@@ -72,8 +70,7 @@ export class UIMeshRenderer extends Component {
 
     //nativeObj
     private declare _UIModelNativeProxy: NativeUIModelProxy;
-    protected declare _renderEntity : RenderEntity;
-    private modelCount = 0;
+    protected declare _renderEntity: RenderEntity;
     public _dirtyVersion = -1;
     public _internalId = -1;
 
@@ -88,7 +85,7 @@ export class UIMeshRenderer extends Component {
 
     onDisable () {
         uiRendererManager.removeRenderer(this);
-        if (this.renderEntity) this.renderEntity.enabled = false;
+        this.renderEntity.enabled = this._canRender();
     }
 
     public onLoad () {
@@ -153,17 +150,18 @@ export class UIMeshRenderer extends Component {
     // Native updateAssembler
     public updateRenderer () {
         if (JSB) {
+            this.renderEntity.enabled = this._canRender();
             if (this._modelComponent) {
                 const models = this._modelComponent._collectModels();
                 // @ts-expect-error: UIMeshRenderer do not attachToScene
                 this._modelComponent._detachFromScene(); // JSB
-                if (models.length !== this.modelCount) {
-                    for (let i = this.modelCount; i < models.length; i++) {
-                        this._uploadRenderData(i);
-                        this._UIModelNativeProxy.updateModels(models[i]);
-                    }
+                // clear models
+                this._UIModelNativeProxy.clearModels();
+                this._renderEntity.clearDynamicRenderDrawInfos();
+                for (let i = 0; i < models.length; i++) {
+                    this._uploadRenderData(i);
+                    this._UIModelNativeProxy.updateModels(models[i]);
                 }
-                this.modelCount = models.length;
                 this._UIModelNativeProxy.attachDrawInfo();
             }
         }
@@ -194,10 +192,7 @@ export class UIMeshRenderer extends Component {
     public update () {
         if (JSB) {
             if (this._modelComponent) {
-                const models = this._modelComponent._collectModels();
-                if (models.length !== this.modelCount) {
-                    this.markForUpdateRenderData();
-                }
+                this.markForUpdateRenderData();
             }
         }
         this._fitUIRenderQueue();
@@ -240,8 +235,14 @@ export class UIMeshRenderer extends Component {
     public setTextureDirty () {
     }
 
+    protected _canRender () {
+        return (this.enabled && this._modelComponent !== null);
+    }
+
     get renderEntity () {
-        assert(this._renderEntity);
+        if (DEBUG) {
+            assert(this._renderEntity, 'this._renderEntity should not be invalid');
+        }
         return this._renderEntity;
     }
 
@@ -251,4 +252,4 @@ export class UIMeshRenderer extends Component {
     }
 }
 
-legacyCC.UIMeshRenderer = UIMeshRenderer;
+cclegacy.UIMeshRenderer = UIMeshRenderer;

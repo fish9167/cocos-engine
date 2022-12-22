@@ -84,9 +84,11 @@ using MaterialPropertyVariant = ccstd::variant<ccstd::monostate /*0*/, MaterialP
 
 using GFXTypeReaderCallback = void (*)(const float *, MaterialProperty &, index_t);
 using GFXTypeWriterCallback = void (*)(float *, const MaterialProperty &, index_t);
+using GFXTypeValidatorCallback = bool (*)(const MaterialProperty &);
 
 extern const ccstd::unordered_map<gfx::Type, GFXTypeReaderCallback> type2reader; //NOLINT(readability-identifier-naming)
 extern const ccstd::unordered_map<gfx::Type, GFXTypeWriterCallback> type2writer; //NOLINT(readability-identifier-naming)
+extern const ccstd::unordered_map<gfx::Type, GFXTypeValidatorCallback> type2validator; //NOLINT(readability-identifier-naming)
 
 /**
  * @en Gets the default values for the given type of uniform
@@ -95,6 +97,7 @@ extern const ccstd::unordered_map<gfx::Type, GFXTypeWriterCallback> type2writer;
  */
 const ccstd::vector<float> &getDefaultFloatArrayFromType(gfx::Type type);
 const ccstd::string &getDefaultStringFromType(gfx::Type type);
+const ccstd::string &getStringFromType(gfx::Type type);
 
 /**
  * @en Combination of preprocess macros
@@ -109,5 +112,8 @@ const ccstd::string &getDefaultStringFromType(gfx::Type type);
 bool overrideMacros(MacroRecord &target, const MacroRecord &source);
 
 MaterialProperty toMaterialProperty(gfx::Type type, const ccstd::vector<float> &vec);
+
+bool macroRecordAsBool(const MacroRecord::mapped_type &v);
+ccstd::string macroRecordAsString(const MacroRecord::mapped_type &v);
 
 } // namespace cc

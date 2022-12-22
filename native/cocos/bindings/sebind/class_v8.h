@@ -25,6 +25,7 @@
 #pragma once
 
 #include "class.inl"
+#include "cocos/bindings/jswrapper/ValueArrayPool.h"
 
 namespace sebind {
 // finalizer callback
@@ -51,9 +52,11 @@ void genericConstructor(const v8::FunctionCallbackInfo<v8::Value> &v8args) {
     using context_type = typename class_<T>::Context;
     v8::Isolate *isolate = v8args.GetIsolate();
     v8::HandleScope handleScope(isolate);
-    bool ret = false;
-    se::ValueArray &args = se::gValueArrayPool.get(v8args.Length());
-    se::CallbackDepthGuard depthGuard{args, se::gValueArrayPool._depth};
+    int ctorInvokeTimes{0};
+    bool constructed{false};
+    bool needDeleteValueArray{false};
+    se::ValueArray &args = se::gValueArrayPool.get(v8args.Length(), needDeleteValueArray);
+    se::CallbackDepthGuard depthGuard{args, se::gValueArrayPool._depth, needDeleteValueArray};
     se::internal::jsToSeArgs(v8args, args);
     auto *self = reinterpret_cast<context_type *>(v8args.Data().IsEmpty() ? nullptr : v8args.Data().As<v8::External>()->Value());
     se::Object *thisObject = se::Object::_createJSObject(self->kls, v8args.This());
@@ -66,37 +69,46 @@ void genericConstructor(const v8::FunctionCallbackInfo<v8::Value> &v8args) {
     assert(!self->constructors.empty());
     for (auto &ctor : self->constructors) {
         if (ctor->argCount == -1 || ctor->argCount == args.size()) {
-            ret = ctor->construct(state);
-            if (ret) break;
+            ctorInvokeTimes++;
+            constructed = ctor->construct(state);
+            if (constructed) break;
         }
     }
-    if (!ret) {
+
+    if (ctorInvokeTimes == 0) {
+        SE_LOGE("[ERROR] Failed match constructor for class %s, %d args, location: %s:%d\n", self->className.c_str(),
+                static_cast<int>(args.size()), __FILE__, __LINE__);
+    }
+
+    if (!constructed) {
         SE_LOGE("[ERROR] Failed to invoke %s, location: %s:%d\n", "constructor", __FILE__, __LINE__);
     }
-    assert(ret); // construction failure is not allowed.
+
+    assert(constructed); // construction failure is not allowed.
+
     if (!self->finalizeCallbacks.empty()) {
         state.thisObject()->getPrivateObject()->finalizerData = self;
     }
 
     se::Value propertyVal;
-    bool found = false;
-    found = thisObject->getProperty("_ctor", &propertyVal);
-    if (found) propertyVal.toObject()->call(args, thisObject);
+    if (thisObject->getProperty("_ctor", &propertyVal)) {
+        propertyVal.toObject()->call(args, thisObject);
+    }
 }
 // v8 property callback
 template <typename ContextType>
-void genericAccessorSet(v8::Local<v8::Name> /*prop*/, v8::Local<v8::Value> jsVal,
-                        const v8::PropertyCallbackInfo<void> &v8args) {
+void genericAccessorSet(const v8::FunctionCallbackInfo<v8::Value> &v8args) {
     auto *attr = reinterpret_cast<ContextType *>(v8args.Data().IsEmpty() ? nullptr : v8args.Data().As<v8::External>()->Value());
     assert(attr);
     v8::Isolate *isolate = v8args.GetIsolate();
     v8::HandleScope handleScope(isolate);
     bool ret = true;
     auto *thisObject = reinterpret_cast<se::Object *>(se::internal::getPrivate(isolate, v8args.This()));
-    se::ValueArray &args = se::gValueArrayPool.get(1);
-    se::CallbackDepthGuard depthGuard{args, se::gValueArrayPool._depth};
+    bool needDeleteValueArray{false};
+    se::ValueArray &args = se::gValueArrayPool.get(1, needDeleteValueArray);
+    se::CallbackDepthGuard depthGuard{args, se::gValueArrayPool._depth, needDeleteValueArray};
     se::Value &data{args[0]};
-    se::internal::jsToSeValue(isolate, jsVal, &data);
+    se::internal::jsToSeValue(isolate, v8args[0], &data);
     se::State state(thisObject, args);
     ret = attr->set(state);
     if (!ret) {
@@ -104,8 +116,7 @@ void genericAccessorSet(v8::Local<v8::Name> /*prop*/, v8::Local<v8::Value> jsVal
     }
 }
 template <typename ContextType>
-void genericAccessorGet(v8::Local<v8::Name> /*prop*/,
-                        const v8::PropertyCallbackInfo<v8::Value> &v8args) {
+void genericAccessorGet(const v8::FunctionCallbackInfo<v8::Value> &v8args) {
     auto *attr = reinterpret_cast<ContextType *>(v8args.Data().IsEmpty() ? nullptr : v8args.Data().As<v8::External>()->Value());
     assert(attr);
     v8::Isolate *isolate = v8args.GetIsolate();
@@ -129,7 +140,7 @@ bool class_<T>::install(se::Object *nsObject) {
     _installed = true;
 
     if (_ctx->constructors.empty()) {
-        if CC_CONSTEXPR (std::is_default_constructible<T>::value) {
+        if constexpr (std::is_default_constructible<T>::value) {
             constructor(); // add default constructor
         }
     }
@@ -189,6 +200,8 @@ bool class_<T>::install(se::Object *nsObject) {
         _ctx->kls->defineStaticProperty(std::get<0>(prop).c_str(), fieldGetter, fieldSetter, std::get<1>(prop).get());
     }
     _ctx->kls->install();
+    JSBClassType::registerClass<T>(_ctx->kls);
+
     return true;
 }
 } // namespace sebind

@@ -24,39 +24,47 @@
 ****************************************************************************/
 
 #include <jni.h>
-#include "cocos/bindings/event/EventDispatcher.h"
+#include "engine/EngineEvents.h"
 #include "platform/interfaces/modules/Device.h"
 #include "platform/java/jni/JniHelper.h"
 #include "platform/java/jni/glue/JniNativeGlue.h"
-#if CC_PLATFORM == CC_PLATFORM_ANDROID
-    #include "platform/BasePlatform.h"
-    #include "platform/android/AndroidPlatform.h"
-#endif
+#include "platform/java/modules/SystemWindow.h"
 
 extern "C" {
-//NOLINTNEXTLINE
+// NOLINTNEXTLINE
 JNIEXPORT void JNICALL Java_com_cocos_lib_CocosOrientationHelper_nativeOnOrientationChanged(JNIEnv *env, jclass thiz, jint rotation) {
     int orientation;
     switch (rotation) {
-        case 0: //ROTATION_0
+        case 0: // ROTATION_0
             orientation = (int)cc::Device::Orientation::PORTRAIT;
-        case 1: //ROTATION_90
+        case 1: // ROTATION_90
             orientation = (int)cc::Device::Orientation::LANDSCAPE_RIGHT;
-        case 2: //ROTATION_180
+        case 2: // ROTATION_180
             orientation = (int)cc::Device::Orientation::PORTRAIT_UPSIDE_DOWN;
-        case 3: //ROTATION_270
+        case 3: // ROTATION_270
             orientation = (int)cc::Device::Orientation::LANDSCAPE_LEFT;
     }
-
-    cc::DeviceEvent ev;
-    ev.type = cc::DeviceEvent::Type::ORIENTATION;
-    ev.args[0].intVal = orientation;
-#if CC_PLATFORM == CC_PLATFORM_ANDROID
-    auto *platform = cc::BasePlatform::getPlatform();
-    auto *androidPlatform = static_cast<cc::AndroidPlatform *>(platform);
-    androidPlatform->dispatchEvent(ev);
-#else
-    JNI_NATIVE_GLUE()->dispatchEvent(ev);
-#endif
+    // run callbacks in game thread?
+    cc::events::Orientation::broadcast(orientation);
 }
+
+JNIEXPORT void JNICALL Java_com_cocos_lib_CocosAbilitySlice_onOrientationChangedNative(JNIEnv *env, jobject obj, jint orientation, jint width, jint height) { //NOLINT JNI function name
+    static jint pOrientation = 0;
+    static jint pWidth = 0;
+    static jint pHeight = 0;
+    if (pOrientation != orientation || pWidth != width || pHeight != height) {
+        cc::WindowEvent ev;
+        // TODO(qgh):The windows ID needs to be passed down from the jave, which is currently using the main window.
+        ev.windowId = cc::ISystemWindow::mainWindowId;
+        ev.type = cc::WindowEvent::Type::SIZE_CHANGED;
+        ev.width = width;
+        ev.height = height;
+        cc::events::WindowEvent::broadcast(ev);
+        pOrientation = orientation;
+        pHeight = height;
+        pWidth = width;
+    }
+}
+
+
 }

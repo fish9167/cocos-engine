@@ -25,19 +25,16 @@
 */
 
 import { ccclass, help, executionOrder, menu, tooltip, displayOrder, type, range, editable, serializable, visible } from 'cc.decorator';
-import { EDITOR } from 'internal:constants';
+import { BUILD, EDITOR } from 'internal:constants';
 import { SpriteAtlas } from '../assets/sprite-atlas';
 import { SpriteFrame } from '../assets/sprite-frame';
-import { Vec2 } from '../../core/math';
-import { ccenum } from '../../core/value-types/enum';
-import { clamp } from '../../core/math/utils';
+import { Vec2, cclegacy, ccenum, clamp } from '../../core';
 import { IBatcher } from '../renderer/i-batcher';
 import { UIRenderer, InstanceMaterialType } from '../framework/ui-renderer';
-import { PixelFormat } from '../../core/assets/asset-enum';
-import { TextureBase } from '../../core/assets/texture-base';
-import { Material, RenderTexture } from '../../core';
-import { NodeEventType } from '../../core/scene-graph/node-event';
-import { legacyCC } from '../../core/global-exports';
+import { PixelFormat } from '../../asset/assets/asset-enum';
+import { TextureBase } from '../../asset/assets/texture-base';
+import { Material, RenderTexture } from '../../asset/assets';
+import { NodeEventType } from '../../scene-graph/node-event';
 
 /**
  * @en
@@ -605,18 +602,9 @@ export class Sprite extends UIRenderer {
         }
     }
 
-    // hack for mask
-    protected _postRender (render: IBatcher) {
-        if (!this._postAssembler) {
-            return;
-        }
-
-        render.commitComp(this, null, null, this._postAssembler, null);
-    }
-
     private _applySpriteSize () {
         if (this._spriteFrame) {
-            if (!this._spriteFrame.isDefault) {
+            if (BUILD || !this._spriteFrame.isDefault) {
                 if (SizeMode.RAW === this._sizeMode) {
                     const size = this._spriteFrame.originalSize;
                     this.node._uiProps.uiTransformComp!.setContentSize(size);
@@ -625,8 +613,6 @@ export class Sprite extends UIRenderer {
                     this.node._uiProps.uiTransformComp!.setContentSize(rect.width, rect.height);
                 }
             }
-
-            this._activateMaterial();
         }
     }
 
@@ -681,7 +667,6 @@ export class Sprite extends UIRenderer {
         if (oldFrame && this._type === SpriteType.SLICED) {
             oldFrame.off(SpriteFrame.EVENT_UV_UPDATED, this._updateUVs, this);
         }
-        this._updateUVs();
 
         let textureChanged = false;
         if (spriteFrame) {
@@ -700,4 +685,4 @@ export class Sprite extends UIRenderer {
     }
 }
 
-legacyCC.Sprite = Sprite;
+cclegacy.Sprite = Sprite;

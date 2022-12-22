@@ -23,8 +23,8 @@
  THE SOFTWARE.
 */
 
-import { AttributeName, Format, FormatInfos, Attribute } from '../../core/gfx';
-import { legacyCC } from '../../core/global-exports';
+import { AttributeName, Format, FormatInfos, Attribute } from '../../gfx';
+import { cclegacy } from '../../core';
 
 /**
  * @en Vertex format with vector 3 position attribute
@@ -63,6 +63,12 @@ export const vfmtPosUvColor = [
     new Attribute(AttributeName.ATTR_COLOR, Format.RGBA32F),
 ];
 
+export const vfmtPosUvColor4B = [
+    new Attribute(AttributeName.ATTR_POSITION, Format.RGB32F),
+    new Attribute(AttributeName.ATTR_TEX_COORD, Format.RG32F),
+    new Attribute(AttributeName.ATTR_COLOR, Format.RGBA8, true),
+];
+
 /**
  * @en Vertex format with the following layout
  * 1. Vector 3 position attribute (Float32)
@@ -80,6 +86,13 @@ export const vfmtPosUvTwoColor = [
     new Attribute(AttributeName.ATTR_TEX_COORD, Format.RG32F),
     new Attribute(AttributeName.ATTR_COLOR, Format.RGBA32F),
     new Attribute(AttributeName.ATTR_COLOR2, Format.RGBA32F),
+];
+
+export const vfmtPosUvTwoColor4B = [
+    new Attribute(AttributeName.ATTR_POSITION, Format.RGB32F),
+    new Attribute(AttributeName.ATTR_TEX_COORD, Format.RG32F),
+    new Attribute(AttributeName.ATTR_COLOR, Format.RGBA8, true),
+    new Attribute(AttributeName.ATTR_COLOR2, Format.RGBA8, true),
 ];
 
 /**
@@ -116,5 +129,7 @@ export function getAttributeStride (attrs: Attribute[]) {
     return count;
 }
 
-legacyCC.internal.vfmtPosUvColor = vfmtPosUvColor;
-legacyCC.internal.vfmtPosUvTwoColor = vfmtPosUvTwoColor;
+cclegacy.internal.vfmtPosUvColor = vfmtPosUvColor;
+cclegacy.internal.vfmtPosUvTwoColor = vfmtPosUvTwoColor;
+cclegacy.internal.vfmtPosUvColor4B = vfmtPosUvColor4B;
+cclegacy.internal.vfmtPosUvTwoColor4B = vfmtPosUvTwoColor4B;

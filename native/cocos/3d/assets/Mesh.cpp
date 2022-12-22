@@ -179,6 +179,11 @@ void checkAttributesNeedConvert(const gfx::AttributeList &orignalAttributes,    
 
     uint32_t attributeIndex = 0;
     for (auto &attribute : attributes) {
+        /*
+         NOTE: The size of RGB16F is 6 bytes, some Android devices may require 4 bytes alignment for attribute and Metal must require 4 bytes alignment.
+                Mesh will not be displayed correctly if setting non 4 bytes alignment (RGB16F is 6 bytes) on those devices.
+                And currently we depend on gfx::GFX_FORMAT_INFOS[format].size a lot, so we disable optimize NORMAL data temporarily before we find a better solution.
+
         if (attribute.name == gfx::ATTR_NAME_NORMAL) {
             if (attribute.format == gfx::Format::RGB32F) {
                 attributeIndicsNeedConvert.emplace_back(attributeIndex);
@@ -189,7 +194,9 @@ void checkAttributesNeedConvert(const gfx::AttributeList &orignalAttributes,    
                 dstStride -= 6;
     #endif
             }
-        } else if (attribute.name == gfx::ATTR_NAME_TEX_COORD || attribute.name == gfx::ATTR_NAME_TEX_COORD1 || attribute.name == gfx::ATTR_NAME_TEX_COORD2 || attribute.name == gfx::ATTR_NAME_TEX_COORD3 || attribute.name == gfx::ATTR_NAME_TEX_COORD4 || attribute.name == gfx::ATTR_NAME_TEX_COORD5 || attribute.name == gfx::ATTR_NAME_TEX_COORD6 || attribute.name == gfx::ATTR_NAME_TEX_COORD7 || attribute.name == gfx::ATTR_NAME_TEX_COORD8) {
+        } else */
+
+        if (attribute.name == gfx::ATTR_NAME_TEX_COORD || attribute.name == gfx::ATTR_NAME_TEX_COORD1 || attribute.name == gfx::ATTR_NAME_TEX_COORD2 || attribute.name == gfx::ATTR_NAME_TEX_COORD3 || attribute.name == gfx::ATTR_NAME_TEX_COORD4 || attribute.name == gfx::ATTR_NAME_TEX_COORD5 || attribute.name == gfx::ATTR_NAME_TEX_COORD6 || attribute.name == gfx::ATTR_NAME_TEX_COORD7 || attribute.name == gfx::ATTR_NAME_TEX_COORD8) {
             if (attribute.format == gfx::Format::RG32F) {
                 attributeIndicsNeedConvert.emplace_back(attributeIndex);
                 attribute.format = gfx::Format::RG16F;
@@ -245,19 +252,23 @@ uint32_t Mesh::getSubMeshCount() const {
     return static_cast<uint32_t>(_renderingSubMeshes.size());
 }
 
-const Vec3 &Mesh::getMinPosition() const {
-    return _struct.minPosition.has_value() ? _struct.minPosition.value() : Vec3::ZERO;
+const Vec3 *Mesh::getMinPosition() const {
+    return _struct.minPosition.has_value() ? &_struct.minPosition.value() : nullptr;
 }
 
-const Vec3 &Mesh::getMaxPosition() const {
-    return _struct.maxPosition.has_value() ? _struct.maxPosition.value() : Vec3::ZERO;
+const Vec3 *Mesh::getMaxPosition() const {
+    return _struct.maxPosition.has_value() ? &_struct.maxPosition.value() : nullptr;
 }
 
 ccstd::hash_t Mesh::getHash() {
     if (_hash == 0U) {
         ccstd::hash_t seed = 666;
-        ccstd::hash_range(seed, _data.buffer()->getData(), _data.buffer()->getData() + _data.length());
-        _hash = seed;
+        if (_data.buffer()) {
+            ccstd::hash_range(seed, _data.buffer()->getData(), _data.buffer()->getData() + _data.length());
+            _hash = seed;
+        } else {
+            ccstd::hash_combine<ccstd::hash_t>(_hash, seed);
+        }
     }
 
     return _hash;
@@ -601,8 +612,6 @@ bool Mesh::merge(Mesh *mesh, const Mat4 *worldMatrix /* = nullptr */, bool valid
     // merge vertex buffer
     uint32_t vertCount = 0;
     uint32_t vertStride = 0;
-    uint32_t srcOffset = 0;
-    uint32_t dstOffset = 0;
 
     uint32_t srcAttrOffset = 0;
     uint32_t srcVBOffset = 0;
@@ -620,18 +629,14 @@ bool Mesh::merge(Mesh *mesh, const Mat4 *worldMatrix /* = nullptr */, bool valid
         const auto &bundle = _struct.vertexBundles[i];
         auto &dstBundle = mesh->_struct.vertexBundles[i];
 
-        srcOffset = bundle.view.offset;
-        dstOffset = dstBundle.view.offset;
         vertStride = bundle.view.stride;
         vertCount = bundle.view.count + dstBundle.view.count;
 
         auto *vb = ccnew ArrayBuffer(vertCount * vertStride);
         Uint8Array vbView(vb);
 
-        Uint8Array srcVBView = _data.subarray(srcOffset, srcOffset + bundle.view.length);
-        srcOffset += srcVBView.length();
-        Uint8Array dstVBView = mesh->_data.subarray(dstOffset, dstOffset + dstBundle.view.length);
-        dstOffset += dstVBView.length();
+        Uint8Array srcVBView = _data.subarray(bundle.view.offset, bundle.view.offset + bundle.view.length);
+        Uint8Array dstVBView = mesh->_data.subarray(dstBundle.view.offset, dstBundle.view.offset + dstBundle.view.length);
 
         vbView.set(srcVBView);
 
@@ -650,7 +655,8 @@ bool Mesh::merge(Mesh *mesh, const Mat4 *worldMatrix /* = nullptr */, bool valid
                 attrSize = gfx::GFX_FORMAT_INFOS[static_cast<uint32_t>(attr.format)].size;
                 srcVBOffset = bundle.view.length + srcAttrOffset;
                 for (uint32_t v = 0; v < dstBundle.view.count; ++v) {
-                    dstAttrView = dstVBView.subarray(dstVBOffset, dstVBOffset + attrSize);
+                    // Important note: the semantics of subarray are different in typescript and native
+                    dstAttrView = dstVBView.subarray(dstBundle.view.offset + dstVBOffset, dstBundle.view.offset + dstVBOffset + attrSize);
                     vbView.set(dstAttrView, srcVBOffset);
                     if ((attr.name == gfx::ATTR_NAME_POSITION || attr.name == gfx::ATTR_NAME_NORMAL) && worldMatrix != nullptr) {
                         Float32Array f32Temp(vbView.buffer(), srcVBOffset, 3);
@@ -685,7 +691,6 @@ bool Mesh::merge(Mesh *mesh, const Mat4 *worldMatrix /* = nullptr */, bool valid
     // merge index buffer
     uint32_t idxCount = 0;
     uint32_t idxStride = 2;
-    uint32_t vertBatchCount = 0;
 
     ccstd::vector<Mesh::ISubMesh> primitives;
     primitives.resize(_struct.primitives.size());
@@ -697,6 +702,7 @@ bool Mesh::merge(Mesh *mesh, const Mat4 *worldMatrix /* = nullptr */, bool valid
         primitives[i].primitiveMode = prim.primitiveMode;
         primitives[i].vertexBundelIndices = prim.vertexBundelIndices;
 
+        uint32_t vertBatchCount = 0;
         for (const uint32_t bundleIdx : prim.vertexBundelIndices) {
             vertBatchCount = std::max(vertBatchCount, _struct.vertexBundles[bundleIdx].view.count);
         }
@@ -704,9 +710,6 @@ bool Mesh::merge(Mesh *mesh, const Mat4 *worldMatrix /* = nullptr */, bool valid
         if (prim.indexView.has_value() && dstPrim.indexView.has_value()) {
             idxCount = prim.indexView.value().count;
             idxCount += dstPrim.indexView.value().count;
-
-            srcOffset = prim.indexView.value().offset;
-            dstOffset = dstPrim.indexView.value().offset;
 
             if (idxCount < 256) {
                 idxStride = 1;
@@ -732,11 +735,11 @@ bool Mesh::merge(Mesh *mesh, const Mat4 *worldMatrix /* = nullptr */, bool valid
 
             // merge src indices
             if (prim.indexView.value().stride == 2) {
-                srcIBView = Uint16Array(_data.buffer(), srcOffset, prim.indexView.value().count);
+                srcIBView = Uint16Array(_data.buffer(), prim.indexView.value().offset, prim.indexView.value().count);
             } else if (prim.indexView.value().stride == 1) {
-                srcIBView = Uint8Array(_data.buffer(), srcOffset, prim.indexView.value().count);
+                srcIBView = Uint8Array(_data.buffer(), prim.indexView.value().offset, prim.indexView.value().count);
             } else { // Uint32
-                srcIBView = Uint32Array(_data.buffer(), srcOffset, prim.indexView.value().count);
+                srcIBView = Uint32Array(_data.buffer(), prim.indexView.value().offset, prim.indexView.value().count);
             }
             //
             if (idxStride == prim.indexView.value().stride) {
@@ -762,16 +765,15 @@ bool Mesh::merge(Mesh *mesh, const Mat4 *worldMatrix /* = nullptr */, bool valid
                     }
                 }
             }
-            srcOffset += prim.indexView.value().length;
 
             // merge dst indices
             uint32_t indexViewStride = dstPrim.indexView.value().stride;
             if (indexViewStride == 2) {
-                dstIBView = Uint16Array(mesh->_data.buffer(), dstOffset, dstPrim.indexView->count);
+                dstIBView = Uint16Array(mesh->_data.buffer(), dstPrim.indexView.value().offset, dstPrim.indexView->count);
             } else if (indexViewStride == 1) {
-                dstIBView = Uint8Array(mesh->_data.buffer(), dstOffset, dstPrim.indexView->count);
+                dstIBView = Uint8Array(mesh->_data.buffer(), dstPrim.indexView.value().offset, dstPrim.indexView->count);
             } else { // Uint32
-                dstIBView = Uint32Array(mesh->_data.buffer(), dstOffset, dstPrim.indexView->count);
+                dstIBView = Uint32Array(mesh->_data.buffer(), dstPrim.indexView.value().offset, dstPrim.indexView->count);
             }
             for (uint32_t n = 0; n < dstPrim.indexView.value().count; ++n) {
                 if (idxStride == 2) {
@@ -785,7 +787,6 @@ bool Mesh::merge(Mesh *mesh, const Mat4 *worldMatrix /* = nullptr */, bool valid
                         vertBatchCount + getTypedArrayValue<uint32_t>(dstIBView, n);
                 }
             }
-            dstOffset += dstPrim.indexView.value().length;
 
             IBufferView indexView;
             indexView.offset = bufferBlob.getLength();
@@ -1074,7 +1075,7 @@ void Mesh::updateSubMesh(index_t primitiveIndex, const IDynamicGeometry &geometr
         auto *dstBuffer = _data.buffer()->getData() + bundle.view.offset;
         const auto *srcBuffer = vertices.buffer()->getData() + vertices.byteOffset();
         auto *vertexBuffer = subMesh->getVertexBuffers()[index];
-        CC_ASSERT(vertexCount <= info.maxSubMeshVertices);
+        CC_ASSERT_LE(vertexCount, info.maxSubMeshVertices);
 
         if (updateSize > 0U) {
             std::memcpy(dstBuffer, srcBuffer, updateSize);
@@ -1094,7 +1095,7 @@ void Mesh::updateSubMesh(index_t primitiveIndex, const IDynamicGeometry &geometr
         const auto *srcBuffer = (stride == sizeof(uint16_t)) ? geometry.indices16.value().buffer()->getData() + geometry.indices16.value().byteOffset()
                                                              : geometry.indices32.value().buffer()->getData() + geometry.indices32.value().byteOffset();
         auto *indexBuffer = subMesh->getIndexBuffer();
-        CC_ASSERT(indexCount <= info.maxSubMeshIndices);
+        CC_ASSERT_LE(indexCount, info.maxSubMeshIndices);
 
         if (updateSize > 0U) {
             std::memcpy(dstBuffer, srcBuffer, updateSize);
@@ -1170,7 +1171,7 @@ void Mesh::tryConvertVertexData() {
         const uint32_t stride = view.stride;
         uint32_t dstStride = stride;
 
-        CC_ASSERT(count * stride == length);
+        CC_ASSERT_EQ(count * stride == length);
 
         checkAttributesNeedConvert(orignalAttributes, attributes, attributeIndicsNeedConvert, dstStride);
         if (attributeIndicsNeedConvert.empty()) {
@@ -1217,7 +1218,7 @@ void Mesh::tryConvertVertexData() {
                         convertRGBA32FToRGBA16F(pValue, pDst);
                     } break;
                     default:
-                        CC_ASSERT(false);
+                        CC_ABORT();
                         break;
                 }
 
@@ -1226,7 +1227,7 @@ void Mesh::tryConvertVertexData() {
                 srcIndex += formatInfo.size;
             }
 
-            CC_ASSERT(wroteBytes == dstStride);
+            CC_ASSERT_EQ(wroteBytes, dstStride);
         }
 
         // update stride & length
@@ -1256,10 +1257,6 @@ gfx::BufferList Mesh::createVertexBuffers(gfx::Device *gfxDevice, ArrayBuffer *d
 void Mesh::initDefault(const ccstd::optional<ccstd::string> &uuid) {
     Super::initDefault(uuid);
     reset({});
-}
-
-bool Mesh::validate() const {
-    return !_renderingSubMeshes.empty() && !_data.empty();
 }
 
 void Mesh::setAllowDataAccess(bool allowDataAccess) {

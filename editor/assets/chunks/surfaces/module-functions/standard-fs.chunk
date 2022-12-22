@@ -9,10 +9,21 @@ void CCSurfacesFragmentGetMaterialData(inout SurfacesMaterialData surfaceData)
 
   surfaceData.worldNormal = SurfacesFragmentModifyWorldNormal();
   SurfacesFragmentModifyWorldTangentAndBinormal(surfaceData.worldTangent, surfaceData.worldBinormal, surfaceData.worldNormal);
+  
+  surfaceData.ior = SurfacesFragmentModifyIOR();
+
 #if CC_SURFACES_LIGHTING_ANISOTROPIC
-  vec4 anisotropyParams = SurfacesFragmentModifyAnisotropyParams();
-  surfaceData.anisotropyShape = anisotropyParams.y;
-  RotateTangentAndBinormal(surfaceData.worldTangent, surfaceData.worldBinormal, surfaceData.worldNormal, anisotropyParams.x);
+  float isRotation;
+  vec4 anisotropyParams = SurfacesFragmentModifyAnisotropyParams(isRotation);
+  surfaceData.anisotropyShape = anisotropyParams.x;
+  if (isRotation > 0.0) {
+    RotateTangentAndBinormal(surfaceData.worldTangent, surfaceData.worldBinormal, surfaceData.worldNormal, anisotropyParams.y);
+  } else {
+    vec3 anisoDirTS = anisotropyParams.yzw;
+    vec3 tangentWS = anisoDirTS.x * surfaceData.worldTangent + anisoDirTS.y * surfaceData.worldBinormal + anisoDirTS.z * surfaceData.worldNormal;
+    surfaceData.worldTangent = normalize(tangentWS);
+    surfaceData.worldBinormal = cross(surfaceData.worldNormal, tangentWS);
+  }
 #endif
 
   surfaceData.emissive = SurfacesFragmentModifyEmissive();
@@ -22,6 +33,14 @@ void CCSurfacesFragmentGetMaterialData(inout SurfacesMaterialData surfaceData)
   surfaceData.roughness = pbr.y;
   surfaceData.metallic = pbr.z;
   surfaceData.specularIntensity = pbr.w;
+
+#if CC_SURFACES_LIGHTING_TRANSMITTENCE
+  surfaceData.transmittenceParams =SurfacesFragmentModifytransmittenceParamss();
+#endif
+#if CC_SURFACES_LIGHTING_TRT
+  vec4 trt = SurfacesFragmentModifyTRTParams();
+  surfaceData.roughnessTRT = trt.x;
+#endif
 
   SurfacesFragmentModifySharedData(surfaceData);
 
@@ -74,11 +93,25 @@ void CCSurfacesInitializeLightingIntermediateData(inout LightingIntermediateData
 #endif
   );
   lightingData.specularParam = surfaceData.roughness;
+  lightingData.ior = surfaceData.ior;
 }
 void CCSurfacesLightingCalculateIntermediateData_PerLight(inout LightingIntermediateData lightingData, in SurfacesMaterialData surfaceData, vec3 lightDirWithDist)
 {
   CCSurfacesLightingGetIntermediateData_PerLight(lightingData, lightDirWithDist);
+#if CC_SURFACES_LIGHTING_TRANSMITTENCE
+  lightingData.transmittenceParams = surfaceData.transmittenceParams;
+#endif
 }
+
+// pass original lightingData, get TRT lightingData
+#if CC_SURFACES_LIGHTING_TRT
+void CCSurfacesGetLightingIntermediateDataTRT(out LightingIntermediateData lightingDataTRT, in LightingIntermediateData lightingData, in SurfacesMaterialData surfaceData)
+{
+  lightingDataTRT = lightingData;
+  lightingDataTRT.specularParam = surfaceData.roughnessTRT;
+}
+#endif
+
 
 // Copy material data to lighting results
 void CCSurfacesInitializeLightingResult(inout LightingResult lightingResult, in SurfacesMaterialData surfaceData)
@@ -109,37 +142,62 @@ void CCSurfacesInitializeLightingResult(inout LightingResult lightingResult, in 
 vec4 CCSurfacesShading(in SurfacesMaterialData surfaceData, in LightingResult lightingResult)
 {
   vec4 color = vec4(0.0, 0.0, 0.0, surfaceData.baseColor.a);
+
 #if CC_FORWARD_ADD
-  color.xyz += lightingResult.directDiffuse * lightingResult.diffuseColorWithLighting;
-  color.xyz += lightingResult.directSpecular * lightingResult.specularColorWithLighting;
-#else
-  #if CC_SURFACES_USE_LIGHT_MAP && !USE_BATCHING && !CC_FORWARD_ADD
-    float lum = FSInput_lightMapUV.z;
-    float lightmapCoef = step(lum, EPSILON_LOWP);
-  #else
-    float lightmapCoef = 0.0;
+  // shadow and fresnel has already been applied with common flow
+  color.xyz += lightingResult.directDiffuse * lightingResult.diffuseColorWithLighting
+    + lightingResult.directSpecular * lightingResult.specularColorWithLighting;
+  #if CC_SURFACES_LIGHTING_TRANSMIT_SPECULAR
+    + lightingResult.directTransmitSpecular * lightingResult.specularColorWithLighting
   #endif
+  ;
   
-  color.xyz += (
-    mix(lightingResult.directDiffuse, lightingResult.lightmapColor, lightmapCoef) * lightingResult.diffuseColorWithLighting
-    + lightingResult.directSpecular * lightingResult.specularColorWithLighting)
+#else
+  float fresnel = 1.0;
+  #if CC_SURFACES_LIGHTING_USE_FRESNEL
+    fresnel = lightingResult.fresnel;
+  #endif
+
+  color.xyz +=
+    ( lightingResult.directDiffuse * lightingResult.diffuseColorWithLighting
+    + lightingResult.directSpecular * lightingResult.specularColorWithLighting * fresnel
+  #if CC_SURFACES_LIGHTING_TRANSMIT_SPECULAR
+    + lightingResult.directTransmitSpecular * lightingResult.specularColorWithLighting * (1.0 - fresnel)
+  #endif
+  #if CC_SURFACES_LIGHTING_TRT
+    + lightingResult.directTRT * lightingResult.specularColorWithLighting
+  #endif
+    )
     * lightingResult.shadow;
 
-  color.xyz += (
-    lightingResult.environmentDiffuse * lightingResult.diffuseColorWithLighting
-    + lightingResult.environmentSpecular * lightingResult.specularColorWithLighting)
+  #if CC_SURFACES_USE_LIGHT_MAP == LIGHT_MAP_TYPE_ALL_IN_ONE
+    color.xyz += lightingResult.lightmapColor * lightingResult.diffuseColorWithLighting * lightingResult.shadow; //apply real-time shadows
+  #elif CC_SURFACES_USE_LIGHT_MAP == LIGHT_MAP_TYPE_INDIRECT_OCCLUSION
+    color.xyz += lightingResult.lightmapColor * lightingResult.diffuseColorWithLighting;
+  #endif
+
+  color.xyz +=
+    ( lightingResult.environmentDiffuse * lightingResult.diffuseColorWithLighting
+    + lightingResult.environmentSpecular * lightingResult.specularColorWithLighting * fresnel
+  #if CC_SURFACES_LIGHTING_TRANSMIT_SPECULAR
+    + lightingResult.environmentTransmitSpecular * lightingResult.specularColorWithLighting * (1.0 - fresnel)
+  #endif
+  #if CC_SURFACES_LIGHTING_TRT
+    + lightingResult.environmentTRT * lightingResult.specularColorWithLighting
+  #endif
+    )
     * lightingResult.ao;
 
   color.xyz += lightingResult.emissive;
 #endif
-  
+ 
   return color;
 }
 
 
 // Debug view
 #if CC_USE_DEBUG_VIEW == CC_SURFACES_DEBUG_VIEW_SINGLE
-void CCSurfacesDebugViewSurfaceData(out vec4 color, in SurfacesMaterialData surfaceData)
+void CCSurfacesDebugViewSurfaceData(inout vec4 color, in SurfacesMaterialData surfaceData)
 {
     vec4 black = vec4(0.0, 0.0, 0.0, 1.0);
     float scalar;

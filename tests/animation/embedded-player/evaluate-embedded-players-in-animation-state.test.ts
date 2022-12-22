@@ -1,6 +1,6 @@
-import { Node } from "../../../cocos/core";
-import { AnimationClip } from "../../../cocos/core/animation/animation-clip";
-import { AnimationState } from "../../../cocos/core/animation/animation-state";
+import { Node } from "../../../cocos/scene-graph";
+import { AnimationClip } from "../../../cocos/animation/animation-clip";
+import { AnimationState } from "../../../cocos/animation/animation-state";
 
 test('Evaluate embedded players in animation state', () => {
     const clip = new AnimationClip();
@@ -14,6 +14,9 @@ test('Evaluate embedded players in animation state', () => {
     jest.spyOn(clip, 'createEmbeddedPlayerEvaluator').mockImplementation((targetNode: Node) => {
         expect(targetNode).toBe(node);
         return embeddedPlayerEvaluation as unknown as ReturnType<AnimationClip['createEmbeddedPlayerEvaluator']>;
+    });
+    jest.spyOn(clip, 'containsAnyEmbeddedPlayer').mockImplementation(() => {
+        return true;
     });
 
     const animationState = new AnimationState(clip);

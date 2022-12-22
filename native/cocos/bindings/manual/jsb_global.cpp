@@ -25,6 +25,7 @@
 
 #include "jsb_global.h"
 #include "application/ApplicationManager.h"
+#include "base/Data.h"
 #include "base/DeferredReleasePool.h"
 #include "base/Scheduler.h"
 #include "base/ThreadPool.h"
@@ -96,7 +97,7 @@ static void localDownloaderCreateTask(const ccstd::string &url, const std::funct
     ss << "jsb_loadimage_" << (gLocalDownloaderTaskId++);
     ccstd::string key = ss.str();
     auto task = localDownloader()->createDataTask(url, key);
-    gLocalDownloaderHandlers.emplace(std::make_pair(task->identifier, callback));
+    gLocalDownloaderHandlers.emplace(task->identifier, callback);
 }
 
 bool jsb_set_extend_property(const char *ns, const char *clsName) { // NOLINT
@@ -127,7 +128,7 @@ ccstd::unordered_map<ccstd::string, se::Value> gModuleCache;
 static bool require(se::State &s) { // NOLINT
     const auto &args = s.args();
     int argc = static_cast<int>(args.size());
-    CC_ASSERT(argc >= 1);
+    CC_ASSERT_GE(argc, 1);
     CC_ASSERT(args[0].isString());
 
     return jsb_run_script(args[0].toString(), &s.rval());
@@ -234,14 +235,14 @@ static bool doModuleRequire(const ccstd::string &path, se::Value *ret, const ccs
     }
 
     SE_LOGE("doModuleRequire %s, buffer is empty!\n", path.c_str());
-    CC_ASSERT(false);
+    CC_ABORT();
     return false;
 }
 
 static bool moduleRequire(se::State &s) { // NOLINT
     const auto &args = s.args();
     int argc = static_cast<int>(args.size());
-    CC_ASSERT(argc >= 2);
+    CC_ASSERT_GE(argc, 2);
     CC_ASSERT(args[0].isString());
     CC_ASSERT(args[1].isString());
 
@@ -307,7 +308,7 @@ static bool jsc_dumpNativePtrToSeObjectMap(se::State &s) { // NOLINT
 SE_BIND_FUNC(jsc_dumpNativePtrToSeObjectMap)
 
 static bool jsc_dumpRoot(se::State &s) { // NOLINT
-    CC_ASSERT(false);
+    CC_ABORT();
     return true;
 }
 SE_BIND_FUNC(jsc_dumpRoot)
@@ -348,7 +349,7 @@ SE_BIND_FUNC(JSBCore_os)
 
 static bool JSBCore_getCurrentLanguage(se::State &s) { // NOLINT
     ISystem *systemIntf = CC_GET_PLATFORM_INTERFACE(ISystem);
-    CC_ASSERT(systemIntf != nullptr);
+    CC_ASSERT_NOT_NULL(systemIntf);
     ccstd::string languageStr = systemIntf->getCurrentLanguageToString();
     s.rval().setString(languageStr);
     return true;
@@ -357,7 +358,7 @@ SE_BIND_FUNC(JSBCore_getCurrentLanguage)
 
 static bool JSBCore_getCurrentLanguageCode(se::State &s) { // NOLINT
     ISystem *systemIntf = CC_GET_PLATFORM_INTERFACE(ISystem);
-    CC_ASSERT(systemIntf != nullptr);
+    CC_ASSERT_NOT_NULL(systemIntf);
     ccstd::string language = systemIntf->getCurrentLanguageCode();
     s.rval().setString(language);
     return true;
@@ -366,7 +367,7 @@ SE_BIND_FUNC(JSBCore_getCurrentLanguageCode)
 
 static bool JSB_getOSVersion(se::State &s) { // NOLINT
     ISystem *systemIntf = CC_GET_PLATFORM_INTERFACE(ISystem);
-    CC_ASSERT(systemIntf != nullptr);
+    CC_ASSERT_NOT_NULL(systemIntf);
     ccstd::string systemVersion = systemIntf->getSystemVersion();
     s.rval().setString(systemVersion);
     return true;
@@ -410,8 +411,8 @@ static bool JSB_setCursorEnabled(se::State &s) { // NOLINT
     ok &= sevalue_to_native(args[0], &value);
     SE_PRECONDITION2(ok, false, "Error processing arguments");
 
-    auto *systemWindowIntf = CC_GET_PLATFORM_INTERFACE(ISystemWindow);
-    CC_ASSERT(systemWindowIntf != nullptr);
+    auto *systemWindowIntf = CC_GET_SYSTEM_WINDOW(ISystemWindow::mainWindowId);
+    CC_ASSERT_NOT_NULL(systemWindowIntf);
     systemWindowIntf->setCursorEnabled(value);
     return true;
 }
@@ -434,8 +435,8 @@ static bool JSB_saveByteCode(se::State &s) { // NOLINT
 SE_BIND_FUNC(JSB_saveByteCode)
 
 static bool getOrCreatePlainObject_r(const char *name, se::Object *parent, se::Object **outObj) { // NOLINT
-    CC_ASSERT(parent != nullptr);
-    CC_ASSERT(outObj != nullptr);
+    CC_ASSERT_NOT_NULL(parent);
+    CC_ASSERT_NOT_NULL(outObj);
     se::Value tmp;
 
     if (parent->getProperty(name, &tmp) && tmp.isObject()) {
@@ -466,6 +467,7 @@ struct ImageInfo {
     cc::gfx::Format format = cc::gfx::Format::UNKNOWN;
     bool hasAlpha = false;
     bool compressed = false;
+    ccstd::vector<uint32_t> mipmapLevelDataSize;
 };
 
 uint8_t *convertRGB2RGBA(uint32_t length, uint8_t *src) {
@@ -509,6 +511,7 @@ struct ImageInfo *createImageInfo(Image *img) {
     img->takeData(&imgInfo->data);
     imgInfo->format = img->getRenderFormat();
     imgInfo->compressed = img->isCompressed();
+    imgInfo->mipmapLevelDataSize = img->getMipmapLevelDataSize();
 
     // Convert to RGBA888 because standard web api will return only RGBA888.
     // If not, then it may have issue in glTexSubImage. For example, engine
@@ -584,7 +587,7 @@ bool jsb_global_load_image(const ccstd::string &path, const se::Value &callbackV
                 return;
             }
             auto engine = app->getEngine();
-            CC_ASSERT(engine != nullptr);
+            CC_ASSERT_NOT_NULL(engine);
             engine->getScheduler()->performFunctionInCocosThread([=]() {
                 se::AutoHandleScope hs;
                 se::ValueArray seArgs;
@@ -597,6 +600,10 @@ bool jsb_global_load_image(const ccstd::string &path, const se::Value &callbackV
                     retObj->setProperty("data", se::Value(obj));
                     retObj->setProperty("width", se::Value(imgInfo->width));
                     retObj->setProperty("height", se::Value(imgInfo->height));
+                    
+                    se::Value mipmapLevelDataSizeArr;
+                    nativevalue_to_se(imgInfo->mipmapLevelDataSize, mipmapLevelDataSizeArr, nullptr);
+                    retObj->setProperty("mipmapLevelDataSize", mipmapLevelDataSizeArr);
 
                     seArgs.push_back(se::Value(retObj));
 
@@ -659,7 +666,67 @@ static bool js_loadImage(se::State &s) { // NOLINT
     return false;
 }
 SE_BIND_FUNC(js_loadImage)
+// pixels(RGBA), width, height, fullFilePath(*.png/*.jpg)
+static bool js_saveImageData(se::State &s) { // NOLINT
+    const auto &args = s.args();
+    size_t argc = args.size();
+    bool ok = true; // NOLINT(readability-identifier-length)
+    if (argc == 4 || argc == 5) {
+        auto *uint8ArrayObj = args[0].toObject();
+        uint8_t *uint8ArrayData{nullptr};
+        size_t length = 0;
+        uint8ArrayObj->root();
+        uint8ArrayObj->incRef();
+        uint8ArrayObj->getTypedArrayData(&uint8ArrayData, &length);
+        uint32_t width;
+        uint32_t height;
+        ok &= sevalue_to_native(args[1], &width);
+        ok &= sevalue_to_native(args[2], &height);
 
+        std::string filePath;
+        ok &= sevalue_to_native(args[3], &filePath);
+        SE_PRECONDITION2(ok, false, "js_saveImageData : Error processing arguments");
+
+        se::Value callbackVal = argc == 5 ? args[4] : se::Value::Null;
+        se::Object *callbackObj{nullptr};
+        if (!callbackVal.isNull()) {
+            CC_ASSERT(callbackVal.isObject());
+            CC_ASSERT(callbackVal.toObject()->isFunction());
+            callbackObj = callbackVal.toObject();
+            callbackObj->root();
+            callbackObj->incRef();
+        }
+
+        gThreadPool->pushTask([=](int /*tid*/) {
+            // isToRGB = false, to keep alpha channel
+            auto *img = ccnew Image();
+            // A conversion from size_t to uint32_t might lose integer precision
+            img->initWithRawData(uint8ArrayData, static_cast<uint32_t>(length), width, height, 32 /*Unused*/);
+            bool isSuccess = img->saveToFile(filePath, false /*isToRGB*/);
+            CC_CURRENT_ENGINE()->getScheduler()->performFunctionInCocosThread([=]() {
+                se::AutoHandleScope hs;
+                se::ValueArray seArgs;
+
+                se::Value isSuccessVal;
+                nativevalue_to_se(isSuccess, isSuccessVal);
+
+                seArgs.push_back(isSuccessVal);
+                if (callbackObj) {
+                    callbackObj->call(seArgs, nullptr);
+                    callbackObj->unroot();
+                    callbackObj->decRef();
+                }
+                uint8ArrayObj->unroot();
+                uint8ArrayObj->decRef();
+                delete img;
+            });
+        });
+        return true;
+    }
+    SE_REPORT_ERROR("wrong number of arguments: %d, was expecting %d or %d", (int)argc, 4, 5);
+    return false;
+}
+SE_BIND_FUNC(js_saveImageData)
 static bool js_destroyImage(se::State &s) { // NOLINT
     const auto &args = s.args();
     size_t argc = args.size();
@@ -685,7 +752,7 @@ static bool JSB_openURL(se::State &s) { // NOLINT
         ok = sevalue_to_native(args[0], &url);
         SE_PRECONDITION2(ok, false, "url is invalid!");
         ISystem *systemIntf = CC_GET_PLATFORM_INTERFACE(ISystem);
-        CC_ASSERT(systemIntf != nullptr);
+        CC_ASSERT_NOT_NULL(systemIntf);
         systemIntf->openURL(url);
         return true;
     }
@@ -704,7 +771,7 @@ static bool JSB_copyTextToClipboard(se::State &s) { // NOLINT
         ok = sevalue_to_native(args[0], &text);
         SE_PRECONDITION2(ok, false, "text is invalid!");
         ISystemWindow *systemWindowIntf = CC_GET_PLATFORM_INTERFACE(ISystemWindow);
-        CC_ASSERT(systemWindowIntf != nullptr);
+        CC_ASSERT_NOT_NULL(systemWindowIntf);
         systemWindowIntf->copyTextToClipboard(text);
         return true;
     }
@@ -1301,6 +1368,14 @@ static bool jsb_register_TextDecoder(se::Object *globalObj) {
     return true;
 }
 
+static bool JSB_process_get_argv(se::State &s) // NOLINT(readability-identifier-naming)
+{
+    const auto &args = CC_CURRENT_APPLICATION()->getArguments();
+    nativevalue_to_se(args, s.rval());
+    return true;
+}
+SE_BIND_PROP_GET(JSB_process_get_argv)
+
 bool jsb_register_global_variables(se::Object *global) { // NOLINT
     gThreadPool = LegacyThreadPool::newFixedThreadPool(3);
 
@@ -1313,6 +1388,7 @@ bool jsb_register_global_variables(se::Object *global) { // NOLINT
     __jsbObj->defineFunction("dumpNativePtrToSeObjectMap", _SE(jsc_dumpNativePtrToSeObjectMap));
 
     __jsbObj->defineFunction("loadImage", _SE(js_loadImage));
+    __jsbObj->defineFunction("saveImageData", _SE(js_saveImageData));
     __jsbObj->defineFunction("openURL", _SE(JSB_openURL));
     __jsbObj->defineFunction("copyTextToClipboard", _SE(JSB_copyTextToClipboard));
     __jsbObj->defineFunction("setPreferredFramesPerSecond", _SE(JSB_setPreferredFramesPerSecond));
@@ -1324,6 +1400,11 @@ bool jsb_register_global_variables(se::Object *global) { // NOLINT
     __jsbObj->defineFunction("setCursorEnabled", _SE(JSB_setCursorEnabled));
     __jsbObj->defineFunction("saveByteCode", _SE(JSB_saveByteCode));
     __jsbObj->defineFunction("createExternalArrayBuffer", _SE(jsb_createExternalArrayBuffer));
+
+    // Create process object
+    se::HandleObject processObj{se::Object::createPlainObject()};
+    processObj->defineProperty("argv", _SE(JSB_process_get_argv), nullptr);
+    __jsbObj->setProperty("process", se::Value(processObj));
 
     se::HandleObject zipUtils(se::Object::createPlainObject());
     zipUtils->defineFunction("inflateMemory", _SE(JSB_zipUtils_inflateMemory));

@@ -1,5 +1,5 @@
 /****************************************************************************
- Copyright (c) 2017-2021 Xiamen Yaji Software Co., Ltd.
+ Copyright (c) 2017-2022 Xiamen Yaji Software Co., Ltd.
 
  http://www.cocos.com
 
@@ -23,17 +23,11 @@
  THE SOFTWARE.
 ****************************************************************************/
 
-//
-//  jsb_XMLHttpRequest.cpp
-//  cocos2d_js_bindings
-//
-//  Created by James Chen on 5/15/17.
-//
-//
 #include "jsb_xmlhttprequest.h"
 #include <algorithm>
 #include <functional>
 #include <sstream>
+#include "application/ApplicationManager.h"
 #include "base/Config.h"
 #include "base/std/container/string.h"
 #include "base/std/container/unordered_map.h"
@@ -41,9 +35,8 @@
 #include "cocos/base/DeferredReleasePool.h"
 #include "cocos/bindings/jswrapper/SeApi.h"
 #include "cocos/bindings/manual/jsb_conversions.h"
+#include "cocos/engine/BaseEngine.h"
 #include "cocos/network/HttpClient.h"
-
-#include "application/ApplicationManager.h"
 
 using namespace cc;          //NOLINT
 using namespace cc::network; //NOLINT
@@ -172,6 +165,16 @@ public:
 
     bool isDiscardedByReset() const { return _isDiscardedByReset; }
 
+    inline void clearCallbacks() {
+        onloadstart = nullptr;
+        onload = nullptr;
+        onloadend = nullptr;
+        onreadystatechange = nullptr;
+        onabort = nullptr;
+        onerror = nullptr;
+        ontimeout = nullptr;
+    }
+
 private:
     ~XMLHttpRequest() override;
 
@@ -183,6 +186,7 @@ private:
     void sendRequest();
     void setHttpRequestHeader();
 
+    BaseEngine::SchedulerPtr _scheduler;
     ccstd::unordered_map<ccstd::string, ccstd::string> _httpHeader;
     ccstd::unordered_map<ccstd::string, ccstd::string> _requestHeader;
 
@@ -225,10 +229,14 @@ XMLHttpRequest::XMLHttpRequest()
   _httpRequest(ccnew HttpRequest()),
   _responseType(ResponseType::STRING),
   _readyState(ReadyState::UNSENT) {
+    _httpRequest->addRef();
+    _scheduler = CC_CURRENT_ENGINE()->getScheduler();
 }
 
 XMLHttpRequest::~XMLHttpRequest() {
-    CC_CURRENT_ENGINE()->getScheduler()->unscheduleAllForTarget(this);
+    if (_scheduler) {
+        _scheduler->unscheduleAllForTarget(this);
+    }
     // Avoid HttpClient response call a released object!
     _httpRequest->setResponseCallback(nullptr);
     CC_SAFE_RELEASE(_httpRequest);
@@ -303,6 +311,9 @@ void XMLHttpRequest::abort() {
 
     setReadyState(ReadyState::DONE);
 
+    // Unregister timeout timer while abort is invoked.
+    _scheduler->unscheduleAllForTarget(this);
+
     if (onabort != nullptr) {
         onabort();
     }
@@ -339,12 +350,12 @@ void XMLHttpRequest::getHeader(const ccstd::string &header) {
         http_field = header.substr(0, found_header_field);
         http_value = header.substr(found_header_field + 1, header.length());
 
-        // Get rid of all \n
+        // trim \n at the end of the string
         if (!http_value.empty() && http_value[http_value.size() - 1] == '\n') {
             http_value.erase(http_value.size() - 1);
         }
 
-        // Get rid of leading space (header is field: value format)
+        // trim leading space (header is field: value format)
         if (!http_value.empty() && http_value[0] == ' ') {
             http_value.erase(0, 1);
         }
@@ -377,7 +388,8 @@ void XMLHttpRequest::getHeader(const ccstd::string &header) {
 }
 
 void XMLHttpRequest::onResponse(HttpClient * /*client*/, HttpResponse *response) {
-    CC_CURRENT_ENGINE()->getScheduler()->unscheduleAllForTarget(this);
+    CC_ASSERT(_scheduler);
+    _scheduler->unscheduleAllForTarget(this);
     _isSending = false;
 
     if (_isTimeout) {
@@ -478,14 +490,15 @@ void XMLHttpRequest::sendRequest() {
     _isSending = true;
     _isTimeout = false;
     if (_timeoutInMilliseconds > 0) {
-        CC_CURRENT_ENGINE()->getScheduler()->schedule([this](float /* dt */) {
+        CC_ASSERT(_scheduler);
+        _scheduler->schedule([this](float /* dt */) {
             if (ontimeout != nullptr) {
                 ontimeout();
             }
             _isTimeout = true;
             _readyState = ReadyState::UNSENT;
         },
-                                                      this, static_cast<float>(_timeoutInMilliseconds) / 1000.0F, 0, 0.0F, false, "XMLHttpRequest");
+                             this, static_cast<float>(_timeoutInMilliseconds) / 1000.0F, 0, 0.0F, false, "XMLHttpRequest");
     }
     setHttpRequestHeader();
 
@@ -524,15 +537,15 @@ void XMLHttpRequest::setRequestHeader(const ccstd::string &key, const ccstd::str
 }
 
 ccstd::string XMLHttpRequest::getAllResponseHeaders() const {
-    std::stringstream responseheaders;
-    ccstd::string responseheader;
+    std::stringstream responseHeaders;
+    ccstd::string responseHeader;
 
     for (const auto &it : _httpHeader) {
-        responseheaders << it.first << ": " << it.second << "\n";
+        responseHeaders << it.first << ": " << it.second << "\n";
     }
 
-    responseheader = responseheaders.str();
-    return responseheader;
+    responseHeader = responseHeaders.str();
+    return responseHeader;
 }
 
 ccstd::string XMLHttpRequest::getResponseHeader(const ccstd::string &key) const {
@@ -548,26 +561,14 @@ ccstd::string XMLHttpRequest::getResponseHeader(const ccstd::string &key) const 
 }
 
 void XMLHttpRequest::setHttpRequestHeader() {
-    ccstd::vector<ccstd::string> header;
+    ccstd::vector<ccstd::string> headers;
 
     for (auto &it : _requestHeader) {
-        const char *first = it.first.c_str();
-        const char *second = it.second.c_str();
-        size_t len = sizeof(char) * (strlen(first) + 3 + strlen(second));
-        char *test = static_cast<char *>(malloc(len));
-        memset(test, 0, len);
-
-        strcpy(test, first);
-        strcpy(test + strlen(first), ": ");
-        strcpy(test + strlen(first) + 2, second);
-
-        header.emplace_back(test);
-
-        free(test);
+        headers.emplace_back(it.first + ": " + it.second);
     }
 
-    if (!header.empty()) {
-        _httpRequest->setHeaders(header);
+    if (!headers.empty()) {
+        _httpRequest->setHeaders(headers);
     }
 }
 
@@ -576,6 +577,7 @@ se::Class *__jsb_XMLHttpRequest_class = nullptr; //NOLINT(readability-identifier
 static bool XMLHttpRequest_finalize(se::State &s) { //NOLINT(readability-identifier-naming, google-runtime-references)
     auto *request = static_cast<XMLHttpRequest *>(s.nativeThisObject());
     SE_LOGD("XMLHttpRequest_finalize, %p ... \n", request);
+    request->clearCallbacks();
     return true;
 }
 SE_BIND_FINALIZE_FUNC(XMLHttpRequest_finalize)
@@ -862,6 +864,8 @@ static bool XMLHttpRequest_getResponse(se::State &s) { //NOLINT(readability-iden
                 } else {
                     s.rval().setNull();
                 }
+            } else if (xhr->getResponseType() == XMLHttpRequest::ResponseType::BLOB) {
+                SE_PRECONDITION2(false, false, "Don't support blob response type");
             } else {
                 SE_PRECONDITION2(false, false, "Invalid response type");
             }

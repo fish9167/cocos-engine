@@ -25,20 +25,20 @@
 */
 
 import { ccclass, help, executionOrder, menu, tooltip, displayOrder, visible, multiline, type, serializable, editable } from 'cc.decorator';
-import { BYTEDANCE, EDITOR } from 'internal:constants';
+import { BYTEDANCE, EDITOR, JSB } from 'internal:constants';
 import { minigame } from 'pal/minigame';
 import { BitmapFont, Font, SpriteFrame } from '../assets';
-import { ImageAsset, Texture2D } from '../../core/assets';
-import { ccenum } from '../../core/value-types/enum';
+import { ImageAsset, Texture2D } from '../../asset/assets';
+import { ccenum, cclegacy, Color } from '../../core';
 import { IBatcher } from '../renderer/i-batcher';
 import { FontAtlas } from '../assets/bitmap-font';
 import { CanvasPool, ISharedLabelData, LetterRenderTexture } from '../assembler/label/font-utils';
 import { InstanceMaterialType, UIRenderer } from '../framework/ui-renderer';
-import { TextureBase } from '../../core/assets/texture-base';
-import { PixelFormat } from '../../core/assets/asset-enum';
-import { legacyCC } from '../../core/global-exports';
-import { BlendFactor } from '../../core/gfx';
+import { TextureBase } from '../../asset/assets/texture-base';
+import { PixelFormat } from '../../asset/assets/asset-enum';
+import { BlendFactor } from '../../gfx';
 
+const tempColor = Color.WHITE.clone();
 /**
  * @en Enum for horizontal text alignment.
  *
@@ -308,28 +308,6 @@ export class Label extends UIRenderer {
 
     /**
      * @en
-     * Font family of label, only take effect when useSystemFont property is true.
-     *
-     * @zh
-     * 文本字体名称, 只在 useSystemFont 属性为 true 的时候生效。
-     */
-    @displayOrder(8)
-    @visible(function (this: Label) { return !this._isSystemFontUsed; })
-    @tooltip('i18n:label.font_family')
-    get fontFamily () {
-        return this._fontFamily;
-    }
-    set fontFamily (value) {
-        if (this._fontFamily === value) {
-            return;
-        }
-
-        this._fontFamily = value;
-        this.markForUpdateRenderData();
-    }
-
-    /**
-     * @en
      * Line Height of label.
      *
      * @zh
@@ -418,13 +396,70 @@ export class Label extends UIRenderer {
 
     /**
      * @en
+     * Whether use system font name or not.
+     *
+     * @zh
+     * 是否使用系统字体。
+     */
+    @displayOrder(12)
+    @tooltip('i18n:label.system_font')
+    get useSystemFont () {
+        return this._isSystemFontUsed;
+    }
+    set useSystemFont (value) {
+        if (this._isSystemFontUsed === value) {
+            return;
+        }
+
+        this.destroyRenderData();
+
+        if (EDITOR) {
+            if (!value && this._isSystemFontUsed && this._userDefinedFont) {
+                this.font = this._userDefinedFont;
+                this.spacingX = this._spacingX;
+                return;
+            }
+        }
+
+        this._isSystemFontUsed = !!value;
+        if (value) {
+            this.font = null;
+        }
+        this._flushAssembler();
+        this.markForUpdateRenderData();
+    }
+
+    /**
+     * @en
+     * Font family of label, only take effect when useSystemFont property is true.
+     *
+     * @zh
+     * 文本字体名称, 只在 useSystemFont 属性为 true 的时候生效。
+     */
+    @displayOrder(13)
+    @visible(function (this: Label) { return this._isSystemFontUsed; })
+    @tooltip('i18n:label.font_family')
+    get fontFamily () {
+        return this._fontFamily;
+    }
+    set fontFamily (value) {
+        if (this._fontFamily === value) {
+            return;
+        }
+
+        this._fontFamily = value;
+        this.markForUpdateRenderData();
+    }
+
+    /**
+     * @en
      * The font of label.
      *
      * @zh
      * 文本字体。
      */
     @type(Font)
-    @displayOrder(12)
+    @displayOrder(13)
     @visible(function (this: Label) { return !this._isSystemFontUsed; })
     @tooltip('i18n:label.font')
     get font () {
@@ -452,41 +487,6 @@ export class Label extends UIRenderer {
 
         this._fontAtlas = null;
         this.updateRenderData(true);
-    }
-
-    /**
-     * @en
-     * Whether use system font name or not.
-     *
-     * @zh
-     * 是否使用系统字体。
-     */
-    @displayOrder(13)
-    @tooltip('i18n:label.system_font')
-    get useSystemFont () {
-        return this._isSystemFontUsed;
-    }
-    set useSystemFont (value) {
-        if (this._isSystemFontUsed === value) {
-            return;
-        }
-
-        this.destroyRenderData();
-
-        if (EDITOR) {
-            if (!value && this._isSystemFontUsed && this._userDefinedFont) {
-                this.font = this._userDefinedFont;
-                this.spacingX = this._spacingX;
-                return;
-            }
-        }
-
-        this._isSystemFontUsed = !!value;
-        if (value) {
-            this.font = null;
-        }
-        this._flushAssembler();
-        this.markForUpdateRenderData();
     }
 
     /**
@@ -674,6 +674,22 @@ export class Label extends UIRenderer {
     protected _fontAtlas: FontAtlas | null = null;
     protected _letterTexture: LetterRenderTexture | null = null;
 
+    protected _contentWidth = 0;
+
+    /**
+     * @engineInternal
+     */
+    get contentWidth () {
+        return this._contentWidth;
+    }
+
+    /**
+     * @engineInternal
+     */
+    set contentWidth (val) {
+        this._contentWidth = val;
+    }
+
     constructor () {
         super();
         if (EDITOR) {
@@ -745,6 +761,17 @@ export class Label extends UIRenderer {
     protected _updateColor () {
         super._updateColor();
         this.markForUpdateRenderData();
+    }
+
+    public setEntityColor (color: Color) {
+        if (JSB) {
+            if (this._font instanceof BitmapFont) {
+                this._renderEntity.color = color;
+            } else {
+                tempColor.set(255, 255, 255, color.a);
+                this._renderEntity.color = tempColor;
+            }
+        }
     }
 
     protected _canRender () {
@@ -858,4 +885,4 @@ export class Label extends UIRenderer {
     }
 }
 
-legacyCC.Label = Label;
+cclegacy.Label = Label;

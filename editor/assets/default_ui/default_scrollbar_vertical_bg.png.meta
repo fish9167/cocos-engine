@@ -1,5 +1,5 @@
 {
-  "ver": "1.0.24",
+  "ver": "1.0.25",
   "importer": "image",
   "imported": true,
   "uuid": "ffb88a8f-af62-48f4-8f1d-3cb606443a43",
@@ -123,7 +123,11 @@
             15,
             0
           ]
-        }
+        },
+        "pixelsToUnit": 100,
+        "pivotX": 0.5,
+        "pivotY": 0.5,
+        "meshType": 0
       },
       "displayName": "default_scrollbar_vertical_bg",
       "id": "f9941",

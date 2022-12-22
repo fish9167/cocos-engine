@@ -234,7 +234,7 @@ private:
     int onClientReceivedData(void *in, ssize_t len);
     int onConnectionOpened();
     int onConnectionError();
-    int onConnectionClosed();
+    int onConnectionClosed(uint16_t code, const ccstd::string &reason);
 
     struct lws_vhost *createVhost(struct lws_protocols *protocols, int *sslConnection);
 
@@ -798,7 +798,7 @@ void WebSocketImpl::close() {
             // but the callback of performInCocosThread has not been triggered. We need to invoke
             // onClose to release the websocket instance.
             _readyStateMutex.unlock();
-            _delegate->onClose(_ws);
+            _delegate->onClose(_ws, 1000, "close_normal", true);
             return;
         }
 
@@ -814,11 +814,13 @@ void WebSocketImpl::close() {
 
     // Wait 5 milliseconds for onConnectionClosed to exit!
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    _delegate->onClose(_ws);
+    _delegate->onClose(_ws, 1000, "close_normal", true);
 }
 
 void WebSocketImpl::closeAsync(int code, const ccstd::string &reason) {
-    lws_close_reason(_wsInstance, static_cast<lws_close_status>(code), reinterpret_cast<unsigned char *>(const_cast<char *>(reason.c_str())), reason.length());
+    if (_wsInstance) {
+        lws_close_reason(_wsInstance, static_cast<lws_close_status>(code), reinterpret_cast<unsigned char *>(const_cast<char *>(reason.c_str())), reason.length());
+    }
     closeAsync();
 }
 
@@ -895,10 +897,10 @@ struct lws_vhost *WebSocketImpl::createVhost(struct lws_protocols *protocols, in
                                 _caFilePath = newCaFilePath;
                                 info.ssl_ca_filepath = _caFilePath.c_str();
                             } else {
-                                CC_ASSERT(false); // Open new CA file failed
+                                CC_ABORT(); // Open new CA file failed
                             }
                         } else {
-                            CC_ASSERT(false); // CA file is empty!
+                            CC_ABORT(); // CA file is empty!
                         }
                     } else {
                         LOGD("CA file isn't in APK!");
@@ -906,7 +908,7 @@ struct lws_vhost *WebSocketImpl::createVhost(struct lws_protocols *protocols, in
                         info.ssl_ca_filepath = _caFilePath.c_str();
                     }
                 } else {
-                    CC_ASSERT(false); // CA file doesn't exist!
+                    CC_ABORT(); // CA file doesn't exist!
                 }
             }
 #else
@@ -1237,12 +1239,12 @@ int WebSocketImpl::onConnectionError() {
         }
     });
 
-    onConnectionClosed();
+    onConnectionClosed(static_cast<uint16_t>(cc::network::WebSocket::ErrorCode::CONNECTION_FAILURE), "connection error");
 
     return 0;
 }
 
-int WebSocketImpl::onConnectionClosed() {
+int WebSocketImpl::onConnectionClosed(uint16_t code, const ccstd::string &reason) {
     {
         std::lock_guard<std::mutex> lk(_readyStateMutex);
         LOGD("WebSocket (%p) onConnectionClosed, state: %d ...\n", this, (int)_readyState);
@@ -1278,11 +1280,11 @@ int WebSocketImpl::onConnectionClosed() {
     }
 
     std::shared_ptr<std::atomic<bool>> isDestroyed = _isDestroyed;
-    wsHelper->sendMessageToCocosThread([this, isDestroyed]() {
+    wsHelper->sendMessageToCocosThread([this, isDestroyed, code, reason]() {
         if (*isDestroyed) {
             LOGD("WebSocket instance (%p) was destroyed!\n", this);
         } else {
-            _delegate->onClose(_ws);
+            _delegate->onClose(_ws, code, reason, true);
         }
     });
 
@@ -1304,7 +1306,7 @@ int WebSocketImpl::onSocketCallback(struct lws * /*wsi*/, enum lws_callback_reas
             break;
 
         case LWS_CALLBACK_WSI_DESTROY:
-            ret = onConnectionClosed();
+            ret = onConnectionClosed(static_cast<uint16_t>(LWS_CALLBACK_WSI_DESTROY), "lws_callback_wsi_destroy");
             break;
 
         case LWS_CALLBACK_CLIENT_RECEIVE:

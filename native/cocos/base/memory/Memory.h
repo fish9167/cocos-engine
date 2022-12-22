@@ -47,7 +47,7 @@ public:
         void *ptr = _aligned_malloc(count, alignment);
 #else
         // alignment is not multiple of sizeof(void*)
-        CC_ASSERT(alignment % sizeof(void *) == 0);
+        CC_ASSERT_ZERO(alignment % sizeof(void *));
         void *ptr = nullptr;
         posix_memalign(&ptr, alignment, count);
 #endif
@@ -125,7 +125,7 @@ public:
         (p)->addRef();     \
     }
 
-#if (CC_PLATFORM == CC_PLATFORM_IOS) && (__IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_11_0)
+#if ((CC_PLATFORM == CC_PLATFORM_IOS) && (__IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_11_0)) || SWIGCOCOS
     #define ALIGNAS(x)
 #else
     #define ALIGNAS(x) alignas(x)

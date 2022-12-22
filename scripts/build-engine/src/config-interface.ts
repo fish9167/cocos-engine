@@ -24,6 +24,11 @@ export interface Config {
      * The constants config for engine and user.
      */
     constants: IConstantConfig;
+
+    /**
+     * The decorators to be optimize when build engine.
+     */
+    optimizeDecorators: IOptimizeDecorators;
 }
 
 export interface IndexConfig {
@@ -58,6 +63,22 @@ export interface Feature {
      * Flags to set when this feature is enabled.
      */
     intrinsicFlags?: Record<string, unknown>;
+
+    /**
+     * List of uuid that the feature depend on.
+     */
+    dependentAssets?: string[];
+
+    /**
+     * List of module that the feature depend on.
+     */
+    dependentModules?: string[];
+
+    /**
+     * Whether it is a native only feature, default is false.
+     * @default false
+     */
+    isNativeOnly?: boolean;
 }
 
 export interface Context {
@@ -66,6 +87,7 @@ export interface Context {
     buildTimeConstants?: Object;
 }
 
+export type ConstantTypeName = 'boolean' | 'number';
 
 export interface IConstantInfo {
     /**
@@ -74,11 +96,15 @@ export interface IConstantInfo {
      */
     readonly comment: string;
     /**
+     * The type of the constant for generating consts.d.ts file.
+     */
+    readonly type: ConstantTypeName;
+    /**
      * The default value of the constant.
-     * It can be a boolean or string.
+     * It can be a boolean, number or string.
      * When it's a string type, the value is the result of eval().
      */
-    value: boolean | string,
+    value: boolean | string | number,
     /**
      * Whether exported to global as a `CC_XXXX` constant.
      * eg. WECHAT is exported to global.CC_WECHAT
@@ -106,4 +132,15 @@ export interface IConstantInfo {
 
 export interface IConstantConfig {
     [ConstantName: string]: IConstantInfo;
+}
+
+export interface IOptimizeDecorators {
+    /**
+     * The decorators which should be optimized when they only decorate class fields.
+     */
+    fieldDecorators: string[],
+    /**
+     * The decorators which should be removed directly when they only work in Cocos Creator editor.
+     */
+    editorDecorators: string[],
 }

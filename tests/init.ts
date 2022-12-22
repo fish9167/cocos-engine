@@ -94,12 +94,13 @@ import '../exports/base';
 import { DebugMode } from "../cocos/core/platform/debug";
 import { EffectAsset, Game, game, IGameConfig } from '../exports/base';
 import './asset-manager/init';
-import '../cocos/core/gfx/empty/empty-device';
+import '../cocos/gfx/empty/empty-device';
 import '../cocos/3d/skeletal-animation/data-pool-manager';
-import '../cocos/core/animation';
+import '../cocos/animation';
 import { effects } from './fixtures/builtin-effects';
 import { glsl4 } from './fixtures/builtin-glsl4';
 import { initBuiltinMaterial } from './fixtures/builtin-material';
+import { initBuiltinPhysicsMaterial } from './fixtures/builtin-physics-material';
 import '../cocos/2d/utils/dynamic-atlas/atlas-manager';
 
 const canvas = document.createElement('canvas');
@@ -126,7 +127,9 @@ globalThis.waitThis((async () => {
             effect.onLoaded();
         });
         initBuiltinMaterial()
-   });
+    });
+
+    initBuiltinPhysicsMaterial();
     await game.init(config);
     await game.run();
 })());

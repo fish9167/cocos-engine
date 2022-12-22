@@ -24,6 +24,7 @@
 ****************************************************************************/
 
 #include "jsb_websocket.h"
+#include "MappingUtils.h"
 #include "cocos/base/DeferredReleasePool.h"
 #include "cocos/bindings/jswrapper/SeApi.h"
 #include "cocos/bindings/manual/jsb_conversions.h"
@@ -74,12 +75,11 @@ void JsbWebSocketDelegate::onOpen(cc::network::WebSocket *ws) {
         return;
     }
 
-    auto iter = se::NativePtrToObjectMap::find(ws);
-    if (iter == se::NativePtrToObjectMap::end()) {
+    se::Object *wsObj = se::NativePtrToObjectMap::findFirst(ws);
+    if (!wsObj) {
         return;
     }
 
-    se::Object *wsObj = iter->second;
     wsObj->setProperty("protocol", se::Value(ws->getProtocol()));
 
     se::HandleObject jsObj(se::Object::createPlainObject());
@@ -107,12 +107,10 @@ void JsbWebSocketDelegate::onMessage(cc::network::WebSocket *ws, const cc::netwo
         return;
     }
 
-    auto iter = se::NativePtrToObjectMap::find(ws);
-    if (iter == se::NativePtrToObjectMap::end()) {
+    se::Object *wsObj = se::NativePtrToObjectMap::findFirst(ws);
+    if (!wsObj) {
         return;
     }
-
-    se::Object *wsObj = iter->second;
     se::HandleObject jsObj(se::Object::createPlainObject());
     jsObj->setProperty("type", se::Value("message"));
     se::Value target;
@@ -150,7 +148,7 @@ void JsbWebSocketDelegate::onMessage(cc::network::WebSocket *ws, const cc::netwo
     }
 }
 
-void JsbWebSocketDelegate::onClose(cc::network::WebSocket *ws) {
+void JsbWebSocketDelegate::onClose(cc::network::WebSocket *ws, uint16_t code, const ccstd::string &reason, bool wasClean) {
     se::ScriptEngine::getInstance()->clearException();
     se::AutoHandleScope hs;
 
@@ -158,19 +156,23 @@ void JsbWebSocketDelegate::onClose(cc::network::WebSocket *ws) {
         return;
     }
 
-    auto iter = se::NativePtrToObjectMap::find(ws);
+    se::Object *wsObj = se::NativePtrToObjectMap::findFirst(ws);
     do {
-        if (iter == se::NativePtrToObjectMap::end()) {
+        if (!wsObj) {
             CC_LOG_INFO("WebSocket js instance was destroyted, don't need to invoke onclose callback!");
             break;
         }
 
-        se::Object *wsObj = iter->second;
         se::HandleObject jsObj(se::Object::createPlainObject());
-        jsObj->setProperty("type", se::Value("close"));
+        jsObj->setProperty("type", se::Value("close")); // deprecated since v3.6
         se::Value target;
         native_ptr_to_seval<cc::network::WebSocket>(ws, &target);
-        jsObj->setProperty("target", target);
+        jsObj->setProperty("target", target); // deprecated since v3.6
+
+        // CloseEvent attributes
+        jsObj->setProperty("code", se::Value(code));
+        jsObj->setProperty("reason", se::Value(reason));
+        jsObj->setProperty("wasClean", se::Value(wasClean));
 
         se::Value func;
         bool ok = _JSDelegate.toObject()->getProperty("onclose", &func);
@@ -182,8 +184,9 @@ void JsbWebSocketDelegate::onClose(cc::network::WebSocket *ws) {
             SE_REPORT_ERROR("Can't get onclose function!");
         }
 
-        //JS Websocket object now can be GC, since the connection is closed.
+        // JS Websocket object now can be GC, since the connection is closed.
         wsObj->unroot();
+        _JSDelegate.toObject()->unroot();
 
         // Websocket instance is attached to global object in 'WebSocket_close'
         // It's safe to detach it here since JS 'onclose' method has been already invoked.
@@ -203,12 +206,10 @@ void JsbWebSocketDelegate::onError(cc::network::WebSocket *ws, const cc::network
         return;
     }
 
-    auto iter = se::NativePtrToObjectMap::find(ws);
-    if (iter == se::NativePtrToObjectMap::end()) {
+    se::Object *wsObj = se::NativePtrToObjectMap::findFirst(ws);
+    if (!wsObj) {
         return;
     }
-
-    se::Object *wsObj = iter->second;
     se::HandleObject jsObj(se::Object::createPlainObject());
     jsObj->setProperty("type", se::Value("error"));
     se::Value target;
@@ -224,8 +225,6 @@ void JsbWebSocketDelegate::onError(cc::network::WebSocket *ws, const cc::network
     } else {
         SE_REPORT_ERROR("Can't get onerror function!");
     }
-
-    wsObj->unroot();
 }
 
 void JsbWebSocketDelegate::setJSDelegate(const se::Value &jsDelegate) {
@@ -233,7 +232,7 @@ void JsbWebSocketDelegate::setJSDelegate(const se::Value &jsDelegate) {
     _JSDelegate = jsDelegate;
 }
 
-static bool webSocketFinalize(const se::State &s) {
+static bool webSocketFinalize(se::State &s) {
     auto *cobj = static_cast<cc::network::WebSocket *>(s.nativeThisObject());
     CC_LOG_INFO("jsbindings: finalizing JS object %p (WebSocket)", cobj);
 
@@ -342,7 +341,7 @@ static bool webSocketConstructor(se::State &s) {
 }
 SE_BIND_CTOR(webSocketConstructor, jsbWebSocketClass, webSocketFinalize)
 
-static bool webSocketSend(const se::State &s) {
+static bool webSocketSend(se::State &s) {
     const auto &args = s.args();
     int argc = static_cast<int>(args.size());
 
@@ -353,14 +352,14 @@ static bool webSocketSend(const se::State &s) {
             ccstd::string data;
             ok = sevalue_to_native(args[0], &data);
             SE_PRECONDITION2(ok, false, "Convert string failed");
-            //IDEA: We didn't find a way to get the JS string length in JSB2.0.
-            //            if (data.empty() && len > 0)
-            //            {
-            //                CC_LOG_DEBUGWARN("Text message to send is empty, but its length is greater than 0!");
-            //                //IDEA: Note that this text message contains '0x00' prefix, so its length calcuted by strlen is 0.
-            //                // we need to fix that if there is '0x00' in text message,
-            //                // since javascript language could support '0x00' inserted at the beginning or the middle of text message
-            //            }
+            // IDEA: We didn't find a way to get the JS string length in JSB2.0.
+            //             if (data.empty() && len > 0)
+            //             {
+            //                 CC_LOG_DEBUGWARN("Text message to send is empty, but its length is greater than 0!");
+            //                 //IDEA: Note that this text message contains '0x00' prefix, so its length calcuted by strlen is 0.
+            //                 // we need to fix that if there is '0x00' in text message,
+            //                 // since javascript language could support '0x00' inserted at the beginning or the middle of text message
+            //             }
 
             cobj->send(data);
         } else if (args[0].isObject()) {
@@ -374,12 +373,12 @@ static bool webSocketSend(const se::State &s) {
                 ok = dataObj->getTypedArrayData(&ptr, &length);
                 SE_PRECONDITION2(ok, false, "getTypedArrayData failed!");
             } else {
-                CC_ASSERT(false);
+                CC_ABORT();
             }
 
             cobj->send(ptr, static_cast<unsigned int>(length));
         } else {
-            CC_ASSERT(false);
+            CC_ABORT();
         }
 
         return true;
@@ -398,26 +397,46 @@ static bool webSocketClose(se::State &s) {
         cobj->closeAsync();
     } else if (argc == 1) {
         if (args[0].isNumber()) {
-            int reason{0};
-            sevalue_to_native(args[0], &reason);
-            cobj->closeAsync(reason, "no_reason");
+            int reasonCode{0};
+            sevalue_to_native(args[0], &reasonCode);
+            cobj->closeAsync(reasonCode, "no_reason");
         } else if (args[0].isString()) {
-            ccstd::string reason;
-            sevalue_to_native(args[0], &reason);
-            cobj->closeAsync(1005, reason);
+            ccstd::string reasonString;
+            sevalue_to_native(args[0], &reasonString);
+            cobj->closeAsync(1005, reasonString);
         } else {
-            CC_ASSERT(false);
+            CC_ABORT();
         }
     } else if (argc == 2) {
-        CC_ASSERT(args[0].isNumber());
-        CC_ASSERT(args[1].isString());
-        int reasonCode{0};
-        ccstd::string reasonString;
-        sevalue_to_native(args[0], &reasonCode);
-        sevalue_to_native(args[1], &reasonString);
-        cobj->closeAsync(reasonCode, reasonString);
+        if (args[0].isNumber()) {
+            int reasonCode{0};
+            if (args[1].isString()) {
+                ccstd::string reasonString;
+                sevalue_to_native(args[0], &reasonCode);
+                sevalue_to_native(args[1], &reasonString);
+                cobj->closeAsync(reasonCode, reasonString);
+            } else if (args[1].isNullOrUndefined()) {
+                sevalue_to_native(args[0], &reasonCode);
+                cobj->closeAsync(reasonCode, "no_reason");
+            } else {
+                CC_ABORT();
+            }
+        } else if (args[0].isNullOrUndefined()) {
+            if (args[1].isString()) {
+                ccstd::string reasonString;
+                sevalue_to_native(args[1], &reasonString);
+                cobj->closeAsync(1005, reasonString);
+            } else if (args[1].isNullOrUndefined()) {
+                cobj->closeAsync();
+            } else {
+                CC_ABORT();
+            }
+        } else {
+            CC_ABORT();
+        }
     } else {
-        CC_ASSERT(false);
+        SE_REPORT_ERROR("wrong number of arguments: %d, was expecting <=2", argc);
+        CC_ABORT();
     }
     // Attach current WebSocket instance to global object to prevent WebSocket instance
     // being garbage collected after "ws.close(); ws = null;"

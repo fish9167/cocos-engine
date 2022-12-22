@@ -1,25 +1,10 @@
-import { Material } from '../../core/assets';
-import { Attribute, Device, Sampler, Texture } from '../../core/gfx';
-import { Node } from '../../core/scene-graph';
-import { Model } from '../../core/renderer/scene';
+import { Material } from '../../asset/assets';
+import { Attribute, Device, Sampler, Texture } from '../../gfx';
+import { Node } from '../../scene-graph';
+import { Model } from '../../render-scene/scene';
 
 export declare class NativeRenderDrawInfo {
-    constructor(batcher: NativeBatcher2d);
-
-    // get batcher ():NativeBatcher2d { return new NativeBatcher2d(); }
-    // set batcher (batcher: NativeBatcher2d) {}
-
-    get accId(): number;
-    set accId(accId: number);
-
-    get bufferId(): number;
-    set bufferId(bufferId: number);
-
-    get vertexOffset(): number;
-    set vertexOffset(vertexOffset: number);
-
-    get indexOffset(): number;
-    set indexOffset(indexOffset: number);
+    constructor();
 
     get vbBuffer(): ArrayBufferLike;
     set vbBuffer(vbBuffer: ArrayBufferLike);
@@ -33,66 +18,41 @@ export declare class NativeRenderDrawInfo {
     get iDataBuffer(): ArrayBufferLike;
     set iDataBuffer(iDataBuffer: ArrayBufferLike);
 
-    get vbCount(): number;
-    set vbCount(vbCount: number);
-
-    get ibCount(): number;
-    set ibCount(ibCount: number);
-
-    get vertDirty(): boolean;
-    set vertDirty(val: boolean);
-
-    get dataHash(): number;
-    set dataHash(dataHash: number);
-
-    get isMeshBuffer(): boolean;
-    set isMeshBuffer(isMeshBuffer: boolean);
-
     get material(): Material | null;
     set material(material: Material | null);
 
     get texture(): Texture | null;
     set texture(texture: Texture | null);
 
-    get textureHash(): number;
-    set textureHash(textureHash: number);
-
     get sampler(): Sampler | null;
     set sampler(sampler: Sampler | null);
-
-    get blendHash(): number;
-    set blendHash(blendHash: number);
 
     get model(): Model | null;
     set model(model: Model | null);
 
-    get drawInfoType(): number;
-    set drawInfoType(drawInfoType: number);
+    get subNode(): Node;
+    set subNode(node: Node);
 
-    setRender2dBufferToNative(data: TypedArray, stride: number, size: number);
+    changeMeshBuffer();
+    setRender2dBufferToNative(data: TypedArray);
     syncSharedBufferToNative(data: TypedArray);
     getAttrSharedBufferForJS(): ArrayBufferLike;
 }
 
 export declare class NativeRenderEntity {
-    constructor(batcher: NativeBatcher2d);
+    constructor(type: number);
 
     addDynamicRenderDrawInfo(drawInfo: NativeRenderDrawInfo);
     setDynamicRenderDrawInfo(drawInfo: NativeRenderDrawInfo, index: number);
     removeDynamicRenderDrawInfo();
     clearDynamicRenderDrawInfos();
-
-    get isMask(): boolean;
-    set isMask(val: boolean);
-
-    get isSubMask(): boolean;
-    set isSubMask(val: boolean);
-
-    get isMaskInverted(): boolean;
-    set isMaskInverted(val: boolean);
+    clearStaticRenderDrawInfos();
 
     get node(): Node | null;
     set node(node: Node | null);
+
+    get renderTransform(): Node | null;
+    set renderTransform(node: Node | null);
 
     get stencilStage(): number;
     set stencilStage(stage: number);
@@ -100,7 +60,6 @@ export declare class NativeRenderEntity {
     get staticDrawInfoSize(): number;
     set staticDrawInfoSize(size: number);
 
-    setRenderEntityType(type: number);
     getStaticRenderDrawInfo(index: number): NativeRenderDrawInfo;
     getEntitySharedBufferForJS(): ArrayBufferLike;
 }
@@ -113,7 +72,7 @@ export declare class NativeUIMeshBuffer {
 
     syncSharedBufferToNative(data: TypedArray);
 
-    initialize(device: Device, attrs: Attribute[], vFloatCount: number, iCount: number);
+    initialize(attrs: Attribute[]);
     reset();
     destroy();
     setDirty();
@@ -132,13 +91,15 @@ export declare class NativeBatcher2d {
 
 export declare class NativeUIModelProxy {
     initModel(node);
-    activeSubModel(index: number);
+    activeSubModels();
     uploadData();
     destroy();
     clear();
+    getModel(): Model;
     updateModels(model);
     attachDrawInfo();
     attachNode(node);
+    clearModels();
 }
 
 export declare class NativeStencilManager {

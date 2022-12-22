@@ -138,7 +138,7 @@ private:
     class ALIGNAS(64) MemoryAllocator final {
     public:
         MemoryAllocator() = default;
-        ~MemoryAllocator() = default;
+        ~MemoryAllocator() noexcept;
         MemoryAllocator(MemoryAllocator const &) = delete;
         MemoryAllocator(MemoryAllocator &&) = delete;
         MemoryAllocator &operator=(MemoryAllocator const &) = delete;
@@ -148,6 +148,7 @@ private:
         uint8_t *request() noexcept;
         void recycle(uint8_t *chunk, bool freeByUser) noexcept;
         void freeByUser(MessageQueue *mainMessageQueue) noexcept;
+        void destroy() noexcept;
 
     private:
         using ChunkQueue = moodycamel::ConcurrentQueue<uint8_t *>;
@@ -175,7 +176,8 @@ private:
 
     WriterContext _writer;
     ReaderContext _reader;
-    EventCV _event;
+    std::mutex _mutex;
+    std::condition_variable _condVar;
     bool _immediateMode{true};
     bool _workerAttached{false};
     bool _freeChunksByUser{true}; // recycled chunks will be stashed until explicit free instruction

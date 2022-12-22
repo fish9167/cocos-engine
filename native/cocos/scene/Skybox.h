@@ -147,6 +147,9 @@ public:
         return _envmapHDR;
     }
 
+    void setRotationAngle(float val);
+    inline float getRotationAngle() const { return _rotationAngle; }
+
     /**
      * @en The optional diffusion convolution map used in tandem with IBL
      * @zh 使用的漫反射卷积图
@@ -162,6 +165,12 @@ public:
     // @type(TextureCube)
     void setDiffuseMap(TextureCube *val);
     TextureCube *getDiffuseMap() const;
+
+    void setReflectionMap(TextureCube *val);
+    TextureCube* getReflectionMap() const;
+
+    void setSkyboxMaterial(Material *val);
+    inline Material *getSkyboxMaterial() const { return _editableMaterial; }
 
     void activate(Skybox *resource);
 
@@ -180,12 +189,15 @@ public:
     // @serializable
     // @type(TextureCube)
     TextureCube *_diffuseMapLDR{nullptr};
+    TextureCube *_reflectionHDR{nullptr};
+    TextureCube *_reflectionLDR{nullptr};
     // @serializable
     bool _enabled{false};
     // @serializable
     bool _useHDR{true};
     EnvironmentLightingType _envLightingType{EnvironmentLightingType::HEMISPHERE_DIFFUSE};
     IntrusivePtr<Material> _editableMaterial;
+    float _rotationAngle{0.F};
     Skybox *_resource{nullptr};
 };
 
@@ -199,6 +211,8 @@ public:
     void setEnvMaps(TextureCube *envmapHDR, TextureCube *envmapLDR);
 
     void setDiffuseMaps(TextureCube *diffuseMapHDR, TextureCube *diffuseMapLDR);
+
+    void setReflectionMaps(TextureCube *reflectionHDR, TextureCube *reflectionLDR);
 
     void activate();
 
@@ -223,10 +237,7 @@ public:
      * @zh 是否启用HDR？
      */
     inline bool isUseHDR() const { return _useHDR; }
-    inline void setUseHDR(bool val) {
-        _useHDR = val;
-        setEnvMaps(_envmapHDR, _envmapLDR);
-    }
+    void setUseHDR(bool val);
 
     /**
      * @en Whether use environment lighting
@@ -274,15 +285,27 @@ public:
     TextureCube *getDiffuseMap() const;
     void setDiffuseMap(TextureCube *val);
     void setSkyboxMaterial(Material *skyboxMat);
+    /**
+     * @en Set skybox rotate angle
+     * @zh 设置天空盒旋转角度
+     * @param angle  @en rotation angle @zh 旋转角度
+     */
+    void setRotationAngle(float angle);
+    float getRotationAngle() const { return _rotationAngle; };
+
+    TextureCube *getReflectionMap() const;
 
 private:
     void updatePipeline() const;
     void updateGlobalBinding();
+    void updateSubModes() const;
 
     IntrusivePtr<TextureCube> _envmapLDR;
     IntrusivePtr<TextureCube> _envmapHDR;
     IntrusivePtr<TextureCube> _diffuseMapLDR;
     IntrusivePtr<TextureCube> _diffuseMapHDR;
+    IntrusivePtr<TextureCube> _reflectionHDR;
+    IntrusivePtr<TextureCube> _reflectionLDR;
     pipeline::GlobalDSManager *_globalDSManager{nullptr};
     IntrusivePtr<Model> _model;
     IntrusivePtr<Mesh> _mesh;
@@ -294,7 +317,7 @@ private:
     bool _useDiffuseMap{false};
     bool _activated{false};
     IntrusivePtr<Material> _editableMaterial;
-
+    float _rotationAngle{0.F};
     CC_DISALLOW_COPY_MOVE_ASSIGN(Skybox);
 };
 

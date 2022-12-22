@@ -38,7 +38,6 @@
                 "additionalProperties": {
                   "type": "string"
                 },
-                "description": "Construct a type with a set of properties K of type T",
                 "type": "object"
               },
               "test": {
@@ -53,23 +52,54 @@
             "type": "object"
           },
           "type": "array"
+        },
+        "optimizeDecorators": {
+          "$ref": "#/definitions/IOptimizeDecorators",
+          "description": "The decorators to be optimize when build engine."
         }
       },
       "required": [
         "features",
         "includes",
-        "constants"
+        "constants",
+        "optimizeDecorators"
       ],
       "type": "object"
+    },
+    "ConstantTypeName": {
+      "enum": [
+        "boolean",
+        "number"
+      ],
+      "type": "string"
     },
     "Feature": {
       "additionalProperties": false,
       "description": "An engine feature.",
       "properties": {
+        "dependentAssets": {
+          "description": "List of uuid that the feature depend on.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "dependentModules": {
+          "description": "List of module that the feature depend on.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "intrinsicFlags": {
           "additionalProperties": {},
           "description": "Flags to set when this feature is enabled.",
           "type": "object"
+        },
+        "isNativeOnly": {
+          "default": false,
+          "description": "Whether it is a native only feature, default is false.",
+          "type": "boolean"
         },
         "modules": {
           "description": "Modules to be included in this feature in their IDs. The ID of a module is its relative path(no extension) under /exports/.",
@@ -111,18 +141,48 @@
           "description": "Whether exported to developer. If true, it's only exported to engine.",
           "type": "boolean"
         },
+        "type": {
+          "$ref": "#/definitions/ConstantTypeName",
+          "description": "The type of the constant for generating consts.d.ts file."
+        },
         "value": {
-          "description": "The default value of the constant. It can be a boolean or string. When it's a string type, the value is the result of eval().",
+          "description": "The default value of the constant. It can be a boolean, number or string. When it's a string type, the value is the result of eval().",
           "type": [
             "boolean",
-            "string"
+            "string",
+            "number"
           ]
         }
       },
       "required": [
         "comment",
+        "type",
         "value",
         "internal"
+      ],
+      "type": "object"
+    },
+    "IOptimizeDecorators": {
+      "additionalProperties": false,
+      "properties": {
+        "editorDecorators": {
+          "description": "The decorators which should be removed directly when they only work in Cocos Creator editor.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "fieldDecorators": {
+          "description": "The decorators which should be optimized when they only decorate class fields.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "fieldDecorators",
+        "editorDecorators"
       ],
       "type": "object"
     },
@@ -144,7 +204,6 @@
             },
             "type": "object"
           },
-          "description": "Construct a type with a set of properties K of type T",
           "type": "object"
         }
       },

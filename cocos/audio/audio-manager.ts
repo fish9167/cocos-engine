@@ -24,7 +24,7 @@
  */
 
 import { AudioPlayer, OneShotAudio } from 'pal/audio';
-import { fastRemoveAt } from '../core/utils/array';
+import { js } from '../core';
 
 type ManagedAudio = AudioPlayer | OneShotAudio;
 interface AudioInfo<T> {
@@ -55,9 +55,7 @@ export class AudioManager {
     }
     public addPlaying (audio: ManagedAudio) {
         if (audio instanceof AudioPlayer) {
-            if (this._tryAddPlaying(this._audioPlayerInfoList, audio)) {
-                return;
-            }
+            this._tryAddPlaying(this._audioPlayerInfoList, audio);
         } else {
             this._tryAddPlaying(this._oneShotAudioInfoList, audio);
         }
@@ -68,14 +66,12 @@ export class AudioManager {
         if (idx === -1) {
             return false;
         }
-        fastRemoveAt(audioInfoList, idx);
+        js.array.fastRemoveAt(audioInfoList, idx);
         return true;
     }
     public removePlaying (audio: ManagedAudio) {
         if (audio instanceof AudioPlayer) {
-            if (this._tryRemovePlaying(this._audioPlayerInfoList, audio)) {
-                return;
-            }
+            this._tryRemovePlaying(this._audioPlayerInfoList, audio);
         } else {
             this._tryRemovePlaying(this._oneShotAudioInfoList, audio);
         }
@@ -105,6 +101,22 @@ export class AudioManager {
             audioInfoToDiscard.audio.stop();
             this.removePlaying(audioInfoToDiscard.audio);
         }
+    }
+
+    public pause () {
+        this._oneShotAudioInfoList.forEach((info) => {
+            info.audio.stop();
+        });
+        this._audioPlayerInfoList.forEach((info) => {
+            info.audio.pause().catch((e) => {});
+        });
+    }
+
+    public resume () {
+        // onShotAudio can not be resumed
+        this._audioPlayerInfoList.forEach((info) => {
+            info.audio.play().catch((e) => {});
+        });
     }
 }
 

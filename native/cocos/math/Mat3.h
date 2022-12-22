@@ -22,8 +22,7 @@
  THE SOFTWARE.
  ****************************************************************************/
 
-#ifndef MATH_MAT3_H
-#define MATH_MAT3_H
+#pragma once
 
 #define MATRIX3_SIZE (sizeof(float) * 9)
 
@@ -61,17 +60,19 @@ public:
     /**
      * Constructs a matrix initialized to the specified value.
      *
-     * @param m11 The first element of the first row.
-     * @param m12 The second element of the first row.
-     * @param m13 The third element of the first row.
-     * @param m21 The first element of the second row.
-     * @param m22 The second element of the second row.
-     * @param m23 The third element of the second row.
-     * @param m31 The first element of the third row.
-     * @param m32 The second element of the third row.
-     * @param m33 The third element of the third row.
+     * @param m00 The first element of the first row.
+     * @param m01 The second element of the first row.
+     * @param m02 The third element of the first row.
+     * @param m10 The first element of the second row.
+     * @param m11 The second element of the second row.
+     * @param m12 The third element of the second row.
+     * @param m20 The first element of the third row.
+     * @param m21 The second element of the third row.
+     * @param m22 The third element of the third row.
      */
-    Mat3(float m11, float m12, float m13, float m21, float m22, float m23, float m31, float m32, float m33);
+    Mat3(float m00, float m01, float m02,
+         float m10, float m11, float m12,
+         float m20, float m21, float m22);
 
     /**
      * Creates a matrix initialized to the specified column-major array.
@@ -94,6 +95,25 @@ public:
     Mat3(const Mat3 &copy);
 
     /**
+     * 
+     * @brief Construct a new Mat 3 object with a Mat4.
+     * Copies the upper-left 3x3 values of a 4x4 matrix into a 3x3 matrix.
+     * @param m4 
+     */
+    explicit Mat3(const Mat4 &m4) {
+        fromMat4(m4, this);
+    }
+
+    /**
+    * @brief Construct a new Mat 3 object with a Quaternion
+    * Calculates a 3x3 matrix from the given quaternion.
+    * @param quat 
+    */
+    explicit Mat3(const Quaternion &quat) {
+        fromQuat(quat, this);
+    }
+
+    /**
      * Destructor.
      */
     ~Mat3() = default;
@@ -101,18 +121,19 @@ public:
     /**
      * Sets the values of this matrix.
      *
-     * @param m11 The first element of the first row.
-     * @param m12 The second element of the first row.
-     * @param m13 The third element of the first row.
-     * @param m21 The first element of the second row.
-     * @param m22 The second element of the second row.
-     * @param m23 The third element of the second row.
-     * @param m31 The first element of the third row.
-     * @param m32 The second element of the third row.
-     * @param m33 The third element of the third row.
+     * @param m00 The first element of the first row.
+     * @param m01 The second element of the first row.
+     * @param m02 The third element of the first row.
+     * @param m10 The first element of the second row.
+     * @param m11 The second element of the second row.
+     * @param m12 The third element of the second row.
+     * @param m20 The first element of the third row.
+     * @param m21 The second element of the third row.
+     * @param m22 The third element of the third row.
      */
-    void set(float m11, float m12, float m13, float m21, float m22, float m23,
-             float m31, float m32, float m33);
+    void set(float m00, float m01, float m02,
+             float m10, float m11, float m12,
+             float m20, float m21, float m22);
 
     /**
      * Sets the values of this matrix to those in the specified column-major array.
@@ -220,6 +241,11 @@ public:
      */
     static void subtract(const Mat3 &a, const Mat3 &b, Mat3 *out);
 
+    /**
+     * Determines if this matrix is approximately equal to the given matrix.
+     */
+    bool approxEquals(const Mat3 &v, float precision = CC_FLOAT_CMP_PRECISION) const;
+
     /** equals to a matrix full of zeros */
     static const Mat3 ZERO;
     /** equals to the identity matrix */
@@ -232,5 +258,3 @@ NS_CC_MATH_END
  end of base group
  @}
  */
-
-#endif

@@ -25,15 +25,15 @@
 
 import { ccclass, disallowMultiple, executeInEditMode, executionOrder, requireComponent } from 'cc.decorator';
 import { IBatcher } from '../renderer/i-batcher';
-import { Component } from '../../core/components/component';
+import { Component } from '../../scene-graph/component';
 import { UITransform } from './ui-transform';
-import { Node } from '../../core/scene-graph';
+import { Node } from '../../scene-graph';
 import { Stage } from '../renderer/stencil-manager';
 
 /**
- * @en Legacy 2D base class for rendering component, please use [[Renderable2D]] instead.
+ * @en Legacy 2D base class for rendering component, please use [[UIRenderer]] instead.
  * This component will setup NodeUIProperties.uiComp in its owner [[Node]]
- * @zh 旧的 2D 渲染组件基类，请使用 [[Renderable2D]] 替代。
+ * @zh 旧的 2D 渲染组件基类，请使用 [[UIRenderer]] 替代。
  * 这个组件会设置 [[Node]] 上的 NodeUIProperties.uiComp。
  * @deprecated since v3.4.1
  */

@@ -73,6 +73,7 @@ public:
     inline Queue *createQueue(const QueueInfo &info);
     inline QueryPool *createQueryPool(const QueryPoolInfo &info);
     inline Swapchain *createSwapchain(const SwapchainInfo &info);
+    inline const ccstd::vector<Swapchain *> &getSwapchains() const { return _swapchains; }
     inline Buffer *createBuffer(const BufferInfo &info);
     inline Buffer *createBuffer(const BufferViewInfo &info);
     inline Texture *createTexture(const TextureInfo &info);
@@ -118,17 +119,18 @@ public:
     template <typename ExecuteMethod>
     void registerOnAcquireCallback(ExecuteMethod &&execute);
 
+    inline void setOptions(const DeviceOptions &opts) { _options = opts; }
+    inline const DeviceOptions &getOptions() const { return _options; }
+
 protected:
     static Device *instance;
+    static bool isSupportDetachDeviceThread;
 
     friend class DeviceAgent;
     friend class DeviceValidator;
     friend class DeviceManager;
 
     Device();
-
-    void destroySurface(void *windowHandle);
-    void createSurface(void *windowHandle);
 
     virtual bool doInit(const DeviceInfo &info) = 0;
     virtual void doDestroy() = 0;
@@ -163,6 +165,7 @@ protected:
     API _api{API::UNKNOWN};
     DeviceCaps _caps;
     BindingMappingInfo _bindingMappingInfo;
+    DeviceOptions _options;
 
     bool _multithreadedCommandRecording{true};
 
@@ -186,6 +189,23 @@ protected:
 
 private:
     ccstd::vector<Swapchain *> _swapchains; // weak reference
+};
+
+class DefaultResource {
+public:
+    explicit DefaultResource(Device *device);
+
+    ~DefaultResource() = default;
+
+    const Texture *getTexture(TextureType type) const;
+
+private:
+    IntrusivePtr<Texture> _texture1D;
+    IntrusivePtr<Texture> _texture2D;
+    IntrusivePtr<Texture> _texture1DArray;
+    IntrusivePtr<Texture> _texture2DArray;
+    IntrusivePtr<Texture> _textureCube;
+    IntrusivePtr<Texture> _texture3D;
 };
 
 //////////////////////////////////////////////////////////////////////////

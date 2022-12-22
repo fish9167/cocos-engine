@@ -76,6 +76,7 @@ void CCSurfacesInitializeLightingIntermediateData(inout LightingIntermediateData
   HIGHP_VALUE_FROM_STRUCT_DEFINED(worldPos, surfaceData.worldPos);
   CCSurfacesLightingGetIntermediateData_PerPixel(lightingData, surfaceData.worldNormal, worldPos, vec3(0.0), vec3(0.0));
   lightingData.specularParam = surfaceData.specular.a;
+  lightingData.ior = 1.0;
 }
 void CCSurfacesLightingCalculateIntermediateData_PerLight(inout LightingIntermediateData lightingData, in SurfacesMaterialData surfaceData, vec3 lightDirWithDist)
 {
@@ -114,10 +115,24 @@ vec4 CCSurfacesShading(in SurfacesMaterialData surfaceData, in LightingResult li
 #else
   float lightmapCoef = 0.0;
     
+#if CC_SURFACES_USE_LEGACY_COMPATIBLE_LIGHTING
   color.xyz += (
     mix(lightingResult.directDiffuse, lightingResult.lightmapColor, lightmapCoef) * lightingResult.diffuseColorWithLighting
     + lightingResult.directSpecular * lightingResult.specularColorWithLighting)
-    * lightingResult.shadow;
+    * lightingResult.shadow
+    ;
+#else
+  // shadowed area equals to back lighting area
+  LightingIntermediateData lightingData;
+  lightingData.NoL = -1.0;
+  vec3 backLightingDiffuse, backLightingSpecular;
+  CCSurfacesLightingCalculateColorWithLighting(backLightingDiffuse, backLightingSpecular, surfaceData, lightingData);
+
+  color.xyz +=
+    mix(lightingResult.directDiffuse, lightingResult.lightmapColor, lightmapCoef) * mix(backLightingDiffuse, lightingResult.diffuseColorWithLighting, lightingResult.shadow)
+    + lightingResult.directSpecular * lightingResult.specularColorWithLighting * lightingResult.shadow
+    ;
+#endif
 
   color.xyz += lightingResult.emissive;
 #endif
@@ -128,7 +143,7 @@ vec4 CCSurfacesShading(in SurfacesMaterialData surfaceData, in LightingResult li
 
 // Debug view
 #if CC_USE_DEBUG_VIEW == CC_SURFACES_DEBUG_VIEW_SINGLE
-void CCSurfacesDebugViewSurfaceData(out vec4 color, in SurfacesMaterialData surfaceData)
+void CCSurfacesDebugViewSurfaceData(inout vec4 color, in SurfacesMaterialData surfaceData)
 {
     float scalar;
     if (IS_DEBUG_VIEW_SINGLE_MODE(CC_SURFACES_DEBUG_VIEW_FRAGMENT_NORMAL))

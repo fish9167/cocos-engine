@@ -42,7 +42,7 @@ public:
     void onMessage(cc::network::WebSocket *ws,
                    const cc::network::WebSocket::Data &data) override;
 
-    void onClose(cc::network::WebSocket *ws) override;
+    void onClose(cc::network::WebSocket *ws, uint16_t code, const ccstd::string &reason, bool wasClean) override;
 
     void onError(cc::network::WebSocket *ws,
                  const cc::network::WebSocket::ErrorCode &error) override;
@@ -56,11 +56,5 @@ private:
 };
 
 SE_DECLARE_FINALIZE_FUNC(WebSocket_finalize);
-
-SE_DECLARE_FUNC(WebSocket_constructor);
-
-SE_DECLARE_FUNC(WebSocket_send);
-
-SE_DECLARE_FUNC(WebSocket_close);
 
 bool register_all_websocket(se::Object *obj); // NOLINT (readability-identifier-naming)

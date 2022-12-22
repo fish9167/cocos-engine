@@ -76,6 +76,18 @@ void MessageQueue::MemoryAllocator::freeByUser(MessageQueue *const mainMessageQu
     mainMessageQueue->kick();
 }
 
+MessageQueue::MemoryAllocator::~MemoryAllocator() noexcept {
+    destroy();
+}
+
+void MessageQueue::MemoryAllocator::destroy() noexcept {
+    uint8_t *chunk = nullptr;
+    if (_chunkPool.try_dequeue(chunk)) {
+        ::free(chunk);
+        _chunkCount.fetch_sub(1, std::memory_order_acq_rel);
+    }
+}
+
 void MessageQueue::MemoryAllocator::free(uint8_t *const chunk) noexcept {
     if (_chunkCount.load(std::memory_order_acquire) >= MEMORY_CHUNK_POOL_CAPACITY) {
         memoryFreeForMultiThread(chunk);
@@ -101,7 +113,9 @@ MessageQueue::MessageQueue() {
 
 void MessageQueue::kick() noexcept {
     pushMessages();
-    _event.signal();
+
+    std::lock_guard<std::mutex> lock(_mutex);
+    _condVar.notify_all();
 }
 
 void MessageQueue::kickAndWait() noexcept {
@@ -199,7 +213,7 @@ uint8_t *MessageQueue::allocateImpl(uint32_t allocatedSize, uint32_t const reque
     if (_immediateMode) {
         pushMessages();
         pullMessages();
-        CC_ASSERT(_reader.newMessageCount == 2);
+        CC_ASSERT_EQ(_reader.newMessageCount, 2);
         executeMessages();
         executeMessages();
     }
@@ -239,11 +253,11 @@ void MessageQueue::executeMessages() noexcept {
 
 Message *MessageQueue::readMessage() noexcept {
     while (!hasNewMessage()) { // if empty
-        pullMessages();        // try pulling data from consumer
-
-        if (!hasNewMessage()) { // still empty
-            _event.wait();      // wait for the producer to wake me up
-            pullMessages();     // pulling again
+        std::unique_lock<std::mutex> lock(_mutex);
+        pullMessages();          // try pulling data from consumer
+        if (!hasNewMessage()) {  // still empty
+            _condVar.wait(lock); // wait for the producer to wake me up
+            pullMessages();      // pulling again
         }
     }
 

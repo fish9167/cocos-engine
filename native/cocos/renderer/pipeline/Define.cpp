@@ -147,7 +147,6 @@ const gfx::UniformBlock UBOShadow::LAYOUT = {
     UBOShadow::BINDING,
     UBOShadow::NAME,
     {
-        {"cc_matLightPlaneProj", gfx::Type::MAT4, 1},
         {"cc_matLightView", gfx::Type::MAT4, 1},
         {"cc_matLightViewProj", gfx::Type::MAT4, 1},
         {"cc_shadowInvProjDepthInfo", gfx::Type::FLOAT4, 1},
@@ -158,13 +157,31 @@ const gfx::UniformBlock UBOShadow::LAYOUT = {
         {"cc_shadowLPNNInfo", gfx::Type::FLOAT4, 1},
         {"cc_shadowColor", gfx::Type::FLOAT4, 1},
         {"cc_planarNDInfo", gfx::Type::FLOAT4, 1},
-        {"cc_matCSMView", gfx::Type::MAT4, UBOShadow::CSM_LEVEL_COUNT},
-        {"cc_matCSMViewProj", gfx::Type::MAT4, UBOShadow::CSM_LEVEL_COUNT},
-        {"cc_matCSMViewProjAtlas", gfx::Type::MAT4, UBOShadow::CSM_LEVEL_COUNT},
-        {"cc_csmProjDepthInfo", gfx::Type::FLOAT4, UBOShadow::CSM_LEVEL_COUNT},
-        {"cc_csmProjInfo", gfx::Type::FLOAT4, UBOShadow::CSM_LEVEL_COUNT},
+    },
+    1,
+};
+
+const ccstd::string UBOCSM::NAME = "CCCSM";
+const gfx::DescriptorSetLayoutBinding UBOCSM::DESCRIPTOR = {
+    UBOCSM::BINDING,
+    gfx::DescriptorType::UNIFORM_BUFFER,
+    1,
+    gfx::ShaderStageFlagBit::FRAGMENT,
+    {},
+};
+const gfx::UniformBlock UBOCSM::LAYOUT = {
+    globalSet,
+    UBOCSM::BINDING,
+    UBOCSM::NAME,
+    {
+        {"cc_csmViewDir0", gfx::Type::FLOAT4, UBOCSM::CSM_LEVEL_COUNT},
+        {"cc_csmViewDir1", gfx::Type::FLOAT4, UBOCSM::CSM_LEVEL_COUNT},
+        {"cc_csmViewDir2", gfx::Type::FLOAT4, UBOCSM::CSM_LEVEL_COUNT},
+        {"cc_csmAtlas", gfx::Type::FLOAT4, UBOCSM::CSM_LEVEL_COUNT},
+        {"cc_matCSMViewProj", gfx::Type::MAT4, UBOCSM::CSM_LEVEL_COUNT},
+        {"cc_csmProjDepthInfo", gfx::Type::FLOAT4, UBOCSM::CSM_LEVEL_COUNT},
+        {"cc_csmProjInfo", gfx::Type::FLOAT4, UBOCSM::CSM_LEVEL_COUNT},
         {"cc_csmSplitsInfo", gfx::Type::FLOAT4, 1},
-        {"cc_csmInfo", gfx::Type::FLOAT4, 1},
     },
     1,
 };
@@ -326,6 +343,30 @@ const gfx::UniformBlock UBOUILocal::LAYOUT = {
     UBOUILocal::NAME,
     {
         {"cc_local_data", gfx::Type::FLOAT4, 1},
+    },
+    1,
+};
+
+const ccstd::string UBOSH::NAME = "CCSH";
+const gfx::DescriptorSetLayoutBinding UBOSH::DESCRIPTOR = {
+    UBOSH::BINDING,
+    gfx::DescriptorType::UNIFORM_BUFFER,
+    1,
+    gfx::ShaderStageFlagBit::FRAGMENT,
+    {},
+};
+const gfx::UniformBlock UBOSH::LAYOUT = {
+    localSet,
+    UBOSH::BINDING,
+    UBOSH::NAME,
+    {
+        {"cc_sh_linear_const_r", gfx::Type::FLOAT4, 1},
+        {"cc_sh_linear_const_g", gfx::Type::FLOAT4, 1},
+        {"cc_sh_linear_const_b", gfx::Type::FLOAT4, 1},
+        {"cc_sh_quadratic_r", gfx::Type::FLOAT4, 1},
+        {"cc_sh_quadratic_g", gfx::Type::FLOAT4, 1},
+        {"cc_sh_quadratic_b", gfx::Type::FLOAT4, 1},
+        {"cc_sh_quadratic_a", gfx::Type::FLOAT4, 1},
     },
     1,
 };
@@ -538,6 +579,38 @@ const gfx::UniformStorageImage REFLECTIONSTORAGE::LAYOUT = {
     1,
 };
 
+const ccstd::string REFLECTIONPROBECUBEMAP::NAME = "cc_reflectionProbeCubemap";
+const gfx::DescriptorSetLayoutBinding REFLECTIONPROBECUBEMAP::DESCRIPTOR = {
+    REFLECTIONPROBECUBEMAP::BINDING,
+    gfx::DescriptorType::SAMPLER_TEXTURE,
+    1,
+    gfx::ShaderStageFlagBit::FRAGMENT,
+    {},
+};
+const gfx::UniformSamplerTexture REFLECTIONPROBECUBEMAP::LAYOUT = {
+    localSet,
+    REFLECTIONPROBECUBEMAP::BINDING,
+    REFLECTIONPROBECUBEMAP::NAME,
+    gfx::Type::SAMPLER_CUBE,
+    1,
+};
+
+const ccstd::string REFLECTIONPROBEPLANARMAP::NAME = "cc_reflectionProbePlanarMap";
+const gfx::DescriptorSetLayoutBinding REFLECTIONPROBEPLANARMAP::DESCRIPTOR = {
+    REFLECTIONPROBEPLANARMAP::BINDING,
+    gfx::DescriptorType::SAMPLER_TEXTURE,
+    1,
+    gfx::ShaderStageFlagBit::FRAGMENT,
+    {},
+};
+const gfx::UniformSamplerTexture REFLECTIONPROBEPLANARMAP::LAYOUT = {
+    localSet,
+    REFLECTIONPROBEPLANARMAP::BINDING,
+    REFLECTIONPROBEPLANARMAP::NAME,
+    gfx::Type::SAMPLER2D,
+    1,
+};
+
 uint32_t skyboxFlag = static_cast<uint32_t>(gfx::ClearFlagBit::STENCIL) << 1;
 
 uint32_t nextPow2(uint32_t val) {
@@ -569,6 +642,12 @@ uint32_t getPhaseID(const ccstd::string& phaseName) {
         ++phaseNum;
     }
     return phases.at(phaseName);
+}
+
+void localDescriptorSetLayoutResizeMaxJoints(uint32_t maxCount) {
+    UBOSkinning::initLayout(maxCount);
+    localDescriptorSetLayout.blocks[UBOSkinning::NAME] = UBOSkinning::layout;
+    localDescriptorSetLayout.bindings[UBOSkinning::BINDING] = UBOSkinning::DESCRIPTOR;
 }
 
 } // namespace pipeline

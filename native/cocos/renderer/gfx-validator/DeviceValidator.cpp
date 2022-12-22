@@ -77,7 +77,6 @@ bool DeviceValidator::doInit(const DeviceInfo &info) {
     if (!_actor->initialize(info)) {
         return false;
     }
-
     _api = _actor->getGfxAPI();
     _deviceName = _actor->getDeviceName();
     _queue = ccnew QueueValidator(_actor->getQueue());
@@ -270,11 +269,11 @@ Sampler *DeviceValidator::getSampler(const SamplerInfo &info) {
 GeneralBarrier *DeviceValidator::getGeneralBarrier(const GeneralBarrierInfo &info) {
     if (info.prevAccesses > AccessFlagBit::PRESENT) {
         // Write access should appear on its own.
-        CC_ASSERT(math::IsPowerOfTwo(toNumber(info.prevAccesses)));
+        CC_ASSERT(math::isPowerOfTwo(toNumber(info.prevAccesses)));
     }
     if (info.nextAccesses > AccessFlagBit::PRESENT) {
         // Write access should appear on its own.
-        CC_ASSERT(math::IsPowerOfTwo(toNumber(info.nextAccesses)));
+        CC_ASSERT(math::isPowerOfTwo(toNumber(info.nextAccesses)));
     }
 
     /////////// execute ///////////
@@ -285,11 +284,11 @@ GeneralBarrier *DeviceValidator::getGeneralBarrier(const GeneralBarrierInfo &inf
 TextureBarrier *DeviceValidator::getTextureBarrier(const TextureBarrierInfo &info) {
     if (info.prevAccesses > AccessFlagBit::PRESENT) {
         // Write access should appear on its own.
-        CC_ASSERT(math::IsPowerOfTwo(toNumber(info.prevAccesses)));
+        CC_ASSERT(math::isPowerOfTwo(toNumber(info.prevAccesses)));
     }
     if (info.nextAccesses > AccessFlagBit::PRESENT) {
         // Write access should appear on its own.
-        CC_ASSERT(math::IsPowerOfTwo(toNumber(info.nextAccesses)));
+        CC_ASSERT(math::isPowerOfTwo(toNumber(info.nextAccesses)));
     }
 
     /////////// execute ///////////

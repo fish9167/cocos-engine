@@ -26,29 +26,15 @@
 // @ts-expect-error jsb polyfills
 (function () {
     if (!window.middleware) return;
-    const RenderDrawInfoType_IA = 2;
     const middleware = window.middleware;
     const middlewareMgr = middleware.MiddlewareManager.getInstance();
     let reference = 0;
     const director = cc.director;
     const game = cc.game;
-    const _accessors = [];
-
-    const nativeXYZUVC = middleware.vfmtPosUvColor = 9;
-    const nativeXYZUVCC = middleware.vfmtPosUvTwoColor = 13;
-
-    const vfmtPosUvColor = cc.internal.vfmtPosUvColor;
-    const vfmtPosUvTwoColor = cc.internal.vfmtPosUvTwoColor;
-
-    const renderInfoLookup = middleware.RenderInfoLookup = {};
-    renderInfoLookup[nativeXYZUVC] = [];
-    renderInfoLookup[nativeXYZUVCC] = [];
 
     middleware.reset = function () {
         middleware.preRenderComponent = null;
         middleware.preRenderBufferIndex = 0;
-        middleware.preRenderBufferType = nativeXYZUVC;
-        middleware.renderOrder = 0;
         middleware.indicesStart = 0;
         middleware.resetIndicesStart = false;
     };
@@ -62,56 +48,7 @@
             return;
         }
         reference--;
-        if (reference === 0) {
-            const uvcBuffers = renderInfoLookup[nativeXYZUVC];
-            for (let i = 0; i < uvcBuffers.length; i++) {
-                cc.UI.RenderData.remove(uvcBuffers[i]);
-            }
-            uvcBuffers.length = 0;
-            const uvccBuffers = renderInfoLookup[nativeXYZUVCC];
-            for (let i = 0; i < uvccBuffers.length; i++) {
-                cc.UI.RenderData.remove(uvccBuffers[i]);
-            }
-            uvccBuffers.length = 0;
-            _accessors.forEach((accessor) => {
-                accessor.destroy();
-            });
-        }
     };
-
-    function CopyNativeBufferToJS (renderer, nativeFormat, jsFormat) {
-        if (!renderer) return;
-
-        const bufferCount = middlewareMgr.getBufferCount(nativeFormat);
-        for (let i = 0; i < bufferCount; i++) {
-            const ibBytesLength = middlewareMgr.getIBTypedArrayLength(nativeFormat, i);
-            const vbBytesLength = middlewareMgr.getVBTypedArrayLength(nativeFormat, i);
-            const srcIndicesCount = ibBytesLength / 2; // USHORT
-            const srcVertexCount = vbBytesLength  / nativeFormat / 4;
-            const srcVertexFloatCount = srcVertexCount * nativeFormat;
-
-            let buffer = renderInfoLookup[nativeFormat][i];
-            if (!buffer)  {
-                if (!_accessors[jsFormat]) {
-                    _accessors[jsFormat] = cc.UI.RenderData.createStaticVBAccessor(jsFormat, 65535);
-                }
-                buffer = cc.UI.RenderData.add(jsFormat, _accessors[jsFormat]);
-                buffer.multiOwner = true;
-                buffer.drawInfoType = RenderDrawInfoType_IA;
-            }
-
-            const srcVBuf = middlewareMgr.getVBTypedArray(nativeFormat, i);
-            const srcIBuf = middlewareMgr.getIBTypedArray(nativeFormat, i);
-
-            buffer.resize(srcVertexCount, srcIndicesCount);
-            const vData = buffer.chunk.vb;
-            const iData = buffer.chunk.meshBuffer.iData;
-            vData.set(srcVBuf.subarray(0, srcVertexFloatCount), 0);
-            iData.set(srcIBuf.subarray(0, srcIndicesCount), 0);
-
-            renderInfoLookup[nativeFormat][i] = buffer;
-        }
-    }
 
     director.on(cc.Director.EVENT_BEFORE_UPDATE, () => {
         if (reference === 0) return;
@@ -125,29 +62,22 @@
         // reset render order
         middleware.reset();
 
-        const batcher2D = director.root.batcher2D;
-        CopyNativeBufferToJS(batcher2D, nativeXYZUVC, vfmtPosUvColor);
-        CopyNativeBufferToJS(batcher2D, nativeXYZUVCC, vfmtPosUvTwoColor);
-        const skeletonSystem = cc.internal.SpineSkeletonSystem.getInstance();
-        skeletonSystem.prepareRenderData();
-        const armaSystem = cc.internal.ArmatureSystem.getInstance();
-        armaSystem.prepareRenderData();
+        //const batcher2D = director.root.batcher2D;
+        if (window.dragonBones) {
+            const armaSystem = cc.internal.ArmatureSystem.getInstance();
+            armaSystem.prepareRenderData();
+        }
+        if (window.spine) {
+            const skeletonSystem = cc.internal.SpineSkeletonSystem.getInstance();
+            skeletonSystem.prepareRenderData();
+        }
     });
-
-    const renderInfoMgr = middlewareMgr.getRenderInfoMgr();
-    renderInfoMgr.renderInfo = renderInfoMgr.getSharedBuffer();
-    renderInfoMgr.setResizeCallback(function () {
-        this.attachInfo = this.getSharedBuffer();
-    });
-    renderInfoMgr.__middleware__ = middleware;
 
     const attachInfoMgr = middlewareMgr.getAttachInfoMgr();
     attachInfoMgr.attachInfo = attachInfoMgr.getSharedBuffer();
     attachInfoMgr.setResizeCallback(function () {
         this.attachInfo = this.getSharedBuffer();
     });
-
-    middleware.renderInfoMgr = renderInfoMgr;
     middleware.attachInfoMgr = attachInfoMgr;
 
     // generate get set function

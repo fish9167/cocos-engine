@@ -41,21 +41,38 @@ public:
     void initialize() override;
     void update() override;
 
-    inline void setShadowEnabled(bool enabled) { _shadowEnabled = enabled; }
-    inline void setShadowPcf(PCFType pcf) { _shadowPcf = pcf; }
+    inline void setShadowEnabled(bool enabled) {
+        _shadowEnabled = enabled;
+        activate();
+    }
+    inline void setShadowPcf(PCFType pcf) {
+        _shadowPcf = pcf;
+        activate();
+    }
     inline void setShadowBias(float bias) { _shadowBias = bias; }
     inline void setShadowNormalBias(float normalBias) { _shadowNormalBias = normalBias; }
     inline void setShadowSaturation(float saturation) { _shadowSaturation = saturation; }
     inline void setShadowDistance(float distance) { _shadowDistance = distance; }
     inline void setShadowInvisibleOcclusionRange(float invisibleOcclusionRange) { _shadowInvisibleOcclusionRange = invisibleOcclusionRange; }
-    inline void setCSMLevel(CSMLevel csmLevel) { _csmLevel = csmLevel; }
+    inline void setCSMLevel(CSMLevel csmLevel) {
+        _csmLevel = csmLevel;
+        activate();
+    }
     inline void setCSMLayerLambda(float lambda) { _csmLayerLambda = lambda; }
     inline void setCSMNeedUpdate(bool isCSMNeedUpdate) { _isCSMNeedUpdate = isCSMNeedUpdate; }
     inline void setCSMOptimizationMode(CSMOptimizationMode csmOptimizationMode) { _csmOptimizationMode = csmOptimizationMode; }
-    inline void setShadowFixedArea(bool fixedArea) { _shadowFixedArea = fixedArea; }
+    inline void setShadowFixedArea(bool fixedArea) {
+        _shadowFixedArea = fixedArea;
+        activate();
+    }
     inline void setShadowNear(float nearValue) { _shadowNear = nearValue; }
     inline void setShadowFar(float farValue) { _shadowFar = farValue; }
     inline void setShadowOrthoSize(float orthoSize) { _shadowOrthoSize = orthoSize; }
+    inline void setCSMLayersTransition(bool csmLayersTransition) {
+        _csmLayersTransition = csmLayersTransition;
+        activate();
+    }
+    inline void setCSMTransitionRange(bool csmTransitionRange) { _csmTransitionRange = csmTransitionRange; }
 
     inline bool isShadowEnabled() const { return _shadowEnabled; }
     inline PCFType getShadowPcf() const { return _shadowPcf; }
@@ -79,30 +96,38 @@ public:
     inline void setIlluminanceLDR(float value) { _illuminanceLDR = value; }
     inline float getIlluminanceHDR() const { return _illuminanceHDR; }
     inline float getIlluminanceLDR() const { return _illuminanceLDR; }
+    inline float getCSMLayersTransition() const { return _csmLayersTransition; }
+    inline float getCSMTransitionRange() const { return _csmTransitionRange; }
     float getIlluminance() const;
     void setIlluminance(float value);
 
 private:
-    float _illuminanceHDR{Ambient::SUN_ILLUM};
-    float _illuminanceLDR{1.F};
-    Vec3 _dir{1.0F, -1.0F, -1.0F};
+    void activate() const;
 
     // shadow info
     bool _shadowEnabled{false};
+    bool _isCSMNeedUpdate{false};
+    bool _shadowFixedArea{false};
+    bool _csmLayersTransition{false};
+
     PCFType _shadowPcf{PCFType::HARD};
+    CSMLevel _csmLevel{CSMLevel::LEVEL_3};
+    CSMOptimizationMode _csmOptimizationMode{CSMOptimizationMode::REMOVE_DUPLICATES};
+
+    float _illuminanceHDR{Ambient::SUN_ILLUM};
+    float _illuminanceLDR{1.F};
     float _shadowBias{0.0F};
     float _shadowNormalBias{0.0F};
     float _shadowSaturation{0.75F};
     float _shadowDistance{50.0F};
     float _shadowInvisibleOcclusionRange{200.0F};
-    CSMLevel _csmLevel{CSMLevel::LEVEL_3};
     float _csmLayerLambda{0.75F};
-    bool _isCSMNeedUpdate{false};
-    CSMOptimizationMode _csmOptimizationMode{CSMOptimizationMode::REMOVE_DUPLICATES};
-    bool _shadowFixedArea{false};
     float _shadowNear{0.1F};
     float _shadowFar{10.0F};
     float _shadowOrthoSize{1.0F};
+    float _csmTransitionRange{0.05F};
+
+    Vec3 _dir{1.0F, -1.0F, -1.0F};
 
     CC_DISALLOW_COPY_MOVE_ASSIGN(DirectionalLight);
 };

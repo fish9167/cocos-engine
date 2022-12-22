@@ -65,7 +65,7 @@ bool js_gfx_Device_copyBuffersToTexture(se::State &s) { // NOLINT(readability-id
                             ok = obj->getTypedArrayData(&ptr, &dataLength);
                             SE_PRECONDITION2(ok, false, "getTypedArrayData failed!");
                         } else {
-                            CC_ASSERT(false);
+                            CC_ABORT();
                         }
                     } else {
                         ptr = reinterpret_cast<uint8_t *>(value.asPtr()); // NOLINT(performance-no-int-to-ptr) script engine bad API design
@@ -119,7 +119,7 @@ bool js_gfx_Device_copyTextureToBuffers(se::State &s) { // NOLINT(readability-id
                             ok = obj->getTypedArrayData(&ptr, &dataLength);
                             SE_PRECONDITION2(ok, false, "getTypedArrayData failed!");
                         } else {
-                            CC_ASSERT(false);
+                            CC_ABORT();
                         }
                     } else {
                         ptr = reinterpret_cast<uint8_t *>(value.asPtr()); // NOLINT(performance-no-int-to-ptr) script engine bad API design
@@ -152,7 +152,7 @@ bool js_gfx_Device_copyTexImagesToTexture(se::State &s) { // NOLINT(readability-
         cc::gfx::BufferDataList arg0;
         cc::gfx::Texture *arg1 = nullptr;
         cc::gfx::BufferTextureCopyList arg2;
-        CC_UNUSED size_t dataLength = 0;
+
         if (args[0].isObject()) {
             se::Object *dataObj = args[0].toObject();
             SE_PRECONDITION2(dataObj->isArray(), false, "Buffers must be an array!");
@@ -164,17 +164,20 @@ bool js_gfx_Device_copyTexImagesToTexture(se::State &s) { // NOLINT(readability-
             for (uint32_t i = 0; i < length; ++i) {
                 if (dataObj->getArrayElement(i, &value)) {
                     if (value.isObject()) {
+                        CC_UNUSED size_t dataLength = 0;
+                        uint8_t *buffer{nullptr};
                         if (value.toObject()->isTypedArray()) {
-                            uint8_t *address = nullptr;
-                            value.toObject()->getTypedArrayData(&address, &dataLength);
-                            arg0[i] = address;
+                            value.toObject()->getTypedArrayData(&buffer, &dataLength);
+                        } else if (value.toObject()->isArrayBuffer()) {
+                            value.toObject()->getArrayBufferData(&buffer, &dataLength);
                         } else {
                             auto *dataHolder = static_cast<cc::JSBNativeDataHolder *>(value.toObject()->getPrivateData());
-                            uint8_t *data = dataHolder->getData();
-                            arg0[i] = data;
+                            CC_ASSERT_NOT_NULL(dataHolder);
+                            buffer = dataHolder->getData();
                         }
+                        arg0[i] = buffer;
                     } else {
-                        CC_ASSERT(false);
+                        CC_ABORT();
                     }
                 }
             }
@@ -462,7 +465,7 @@ static bool js_gfx_CommandBuffer_copyBuffersToTexture(se::State &s) { // NOLINT(
                         ok = obj->getTypedArrayData(&ptr, &dataLength);
                         SE_PRECONDITION2(ok, false, "getTypedArrayData failed!");
                     } else {
-                        CC_ASSERT(false);
+                        CC_ABORT();
                     }
                     arg0[i] = ptr;
                 }

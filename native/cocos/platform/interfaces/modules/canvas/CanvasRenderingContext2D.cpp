@@ -33,7 +33,9 @@
 #include "math/Math.h"
 #include "platform/FileUtils.h"
 
-#if (CC_PLATFORM == CC_PLATFORM_WINDOWS)
+#if defined(CC_SERVER_MODE)
+    #include "platform/empty/modules/CanvasRenderingContext2DDelegate.h"
+#elif (CC_PLATFORM == CC_PLATFORM_WINDOWS)
     #include "platform/win32/modules/CanvasRenderingContext2DDelegate.h"
 #elif (CC_PLATFORM == CC_PLATFORM_ANDROID || CC_PLATFORM == CC_PLATFORM_OHOS)
     #include "platform/java/modules/CanvasRenderingContext2DDelegate.h"
@@ -161,14 +163,14 @@ void CanvasRenderingContext2D::fetchData() {
 
 void CanvasRenderingContext2D::setWidth(float width) {
     //SE_LOGD("CanvasRenderingContext2D::set__width: %f\n", width);
-    if (math::IsEqualF(width, _width)) return;
+    if (math::isEqualF(width, _width)) return;
     _width = width;
     _isBufferSizeDirty = true;
 }
 
 void CanvasRenderingContext2D::setHeight(float height) {
     //SE_LOGD("CanvasRenderingContext2D::set__height: %f\n", height);
-    if (math::IsEqualF(height, _height)) return;
+    if (math::isEqualF(height, _height)) return;
     _height = height;
     _isBufferSizeDirty = true;
 }
@@ -231,10 +233,11 @@ void CanvasRenderingContext2D::setFont(const ccstd::string &font) {
             fontSizeStr = results[2].str();
             fontName = results[5].str();
         }
-
+        bool isItalic = font.find("italic", 0) != ccstd::string::npos || font.find("Italic", 0) != ccstd::string::npos;
         auto fontSize = static_cast<float>(atof(fontSizeStr.c_str()));
-        //SE_LOGD("CanvasRenderingContext2D::set_font: %s, Size: %f, isBold: %b\n", fontName.c_str(), fontSize, !boldStr.empty());
-        _delegate->updateFont(fontName, fontSize, !boldStr.empty(), false, false, false);
+        bool isBold = !boldStr.empty() || font.find("bold", 0) != ccstd::string::npos || font.find("Bold", 0) != ccstd::string::npos;
+        //SE_LOGD("CanvasRenderingContext2D::set_font: %s, Size: %f, isBold: %b\n", fontName.c_str(), fontSize, isBold);
+        _delegate->updateFont(fontName, fontSize, isBold, isItalic, false, false);
     }
 #elif CC_PLATFORM == CC_PLATFORM_QNX
     if (_font != font) {
@@ -252,10 +255,11 @@ void CanvasRenderingContext2D::setFont(const ccstd::string &font) {
             fontSizeStr = results[2].str();
             fontName = results[5].str();
         }
-        bool isItalic = font.find("italic", 0) != ccstd::string::npos;
+        bool isItalic = font.find("italic", 0) != ccstd::string::npos || font.find("Italic", 0) != ccstd::string::npos;
         auto fontSize = static_cast<float>(atof(fontSizeStr.c_str()));
-        //SE_LOGD("CanvasRenderingContext2D::set_font: %s, Size: %f, isBold: %b\n", fontName.c_str(), fontSize, !boldStr.empty());
-        _delegate->updateFont(fontName, fontSize, !boldStr.empty(), isItalic, false, false);
+        bool isBold = !boldStr.empty() || font.find("bold", 0) != ccstd::string::npos || font.find("Bold", 0) != ccstd::string::npos;
+        //SE_LOGD("CanvasRenderingContext2D::set_font: %s, Size: %f, isBold: %b\n", fontName.c_str(), fontSize, isBold);
+        _delegate->updateFont(fontName, fontSize, isBold, isItalic, false, false);
     }
 #elif CC_PLATFORM == CC_PLATFORM_LINUX
     if (_font != font) {
@@ -278,10 +282,10 @@ void CanvasRenderingContext2D::setFont(const ccstd::string &font) {
             }
         }
 
-        bool isBold = font.find("bold", 0) != ccstd::string::npos;
-        bool isItalic = font.find("italic", 0) != ccstd::string::npos;
+        bool isBold = font.find("bold", 0) != ccstd::string::npos || font.find("Bold", 0) != ccstd::string::npos;
+        bool isItalic = font.find("italic", 0) != ccstd::string::npos || font.find("Italic", 0) != ccstd::string::npos;
         float fontSize = static_cast<float>(atof(fontSizeStr.c_str()));
-        //SE_LOGD("CanvasRenderingContext2D::set_font: %s, Size: %f, isBold: %b\n", fontName.c_str(), fontSize, !boldStr.empty());
+        //SE_LOGD("CanvasRenderingContext2D::set_font: %s, Size: %f, isBold: %b\n", fontName.c_str(), fontSize, isBold);
         _delegate->updateFont(fontName, fontSize, isBold, isItalic, false, false);
     }
 #elif CC_PLATFORM == CC_PLATFORM_ANDROID || CC_PLATFORM == CC_PLATFORM_OHOS
@@ -305,10 +309,10 @@ void CanvasRenderingContext2D::setFont(const ccstd::string &font) {
         }
 
         double fontSize = atof(fontSizeStr.c_str());
-        bool isBold = font.find("bold", 0) != ccstd::string::npos;
-        bool isItalic = font.find("italic", 0) != ccstd::string::npos;
-        bool isSmallCaps = font.find("small-caps", 0) != ccstd::string::npos;
-        bool isOblique = font.find("oblique", 0) != ccstd::string::npos;
+        bool isBold = font.find("bold", 0) != ccstd::string::npos || font.find("Bold", 0) != ccstd::string::npos;
+        bool isItalic = font.find("italic", 0) != ccstd::string::npos || font.find("Italic", 0) != ccstd::string::npos;
+        bool isSmallCaps = font.find("small-caps", 0) != ccstd::string::npos || font.find("Small-Caps") !=ccstd::string::npos;
+        bool isOblique = font.find("oblique", 0) != ccstd::string::npos || font.find("Oblique", 0) != ccstd::string::npos ;
         //font-style: italic, oblique, normal
         //font-weight: normal, bold
         //font-variant: normal, small-caps
@@ -321,6 +325,7 @@ void CanvasRenderingContext2D::setFont(const ccstd::string &font) {
         ccstd::string boldStr;
         ccstd::string fontName = "Arial";
         ccstd::string fontSizeStr = "30";
+        bool isItalic = font.find("italic", 0) != ccstd::string::npos || font.find("Italic", 0) != ccstd::string::npos;
 
         // support get font name from `60px American` or `60px "American abc-abc_abc"`
         std::regex re("(bold)?\\s*((\\d+)([\\.]\\d+)?)px\\s+([\\w-]+|\"[\\w -]+\"$)");
@@ -331,8 +336,8 @@ void CanvasRenderingContext2D::setFont(const ccstd::string &font) {
             fontName = results[5].str();
         }
         float fontSize = atof(fontSizeStr.c_str());
-        bool isBold = !boldStr.empty();
-        _delegate->updateFont(fontName, static_cast<float>(fontSize), isBold, false, false, false);
+        bool isBold = !boldStr.empty() || font.find("bold", 0) != ccstd::string::npos || font.find("Bold", 0) != ccstd::string::npos;
+        _delegate->updateFont(fontName, static_cast<float>(fontSize), isBold, isItalic, false, false);
     }
 #endif
 }
@@ -346,7 +351,7 @@ void CanvasRenderingContext2D::setTextAlign(const ccstd::string &textAlign) {
     } else if (textAlign == "right") {
         _delegate->setTextAlign(TextAlign::RIGHT);
     } else {
-        CC_ASSERT(false);
+        CC_ABORT();
     }
 }
 
@@ -362,25 +367,36 @@ void CanvasRenderingContext2D::setTextBaseline(const ccstd::string &textBaseline
     } else if (textBaseline == "alphabetic") {
         _delegate->setTextBaseline(TextBaseline::ALPHABETIC);
     } else {
-        CC_ASSERT(false);
+        CC_ABORT();
     }
 }
 
 void CanvasRenderingContext2D::setFillStyle(const ccstd::string &fillStyle) {
     CSSColorParser::Color color = CSSColorParser::parse(fillStyle);
-    _delegate->setFillStyle(static_cast<float>(color.r) / 255.0F,
-                            static_cast<float>(color.g) / 255.0F,
-                            static_cast<float>(color.b) / 255.0F,
-                            color.a);
+    _delegate->setFillStyle(color.r, color.g, color.b, static_cast<uint8_t>(color.a * 255));
     //SE_LOGD("CanvasRenderingContext2D::set_fillStyle: %s, (%d, %d, %d, %f)\n", fillStyle.c_str(), color.r, color.g, color.b, color.a);
 }
 
 void CanvasRenderingContext2D::setStrokeStyle(const ccstd::string &strokeStyle) {
     CSSColorParser::Color color = CSSColorParser::parse(strokeStyle);
-    _delegate->setStrokeStyle(static_cast<float>(color.r) / 255.0F,
-                              static_cast<float>(color.g) / 255.0F,
-                              static_cast<float>(color.b) / 255.0F,
-                              color.a);
+    _delegate->setStrokeStyle(color.r, color.g, color.b, static_cast<uint8_t>(color.a * 255));
+}
+
+void CanvasRenderingContext2D::setShadowBlur(float blur) {
+    _delegate->setShadowBlur(blur);
+}
+
+void CanvasRenderingContext2D::setShadowColor(const ccstd::string &shadowColor) {
+    CSSColorParser::Color color = CSSColorParser::parse(shadowColor);
+    _delegate->setShadowColor(color.r, color.g, color.b, static_cast<uint8_t>(color.a * 255));
+}
+
+void CanvasRenderingContext2D::setShadowOffsetX(float offsetX) {
+    _delegate->setShadowOffsetX(offsetX);
+}
+
+void CanvasRenderingContext2D::setShadowOffsetY(float offsetY) {
+    _delegate->setShadowOffsetY(offsetY);
 }
 
 void CanvasRenderingContext2D::setGlobalCompositeOperation(const ccstd::string &globalCompositeOperation) {

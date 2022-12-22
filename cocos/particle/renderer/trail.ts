@@ -24,20 +24,18 @@
  */
 
 import { ccclass, tooltip, displayOrder, type, serializable, range } from 'cc.decorator';
-import { Material } from '../../core/assets/material';
-import { RenderingSubMesh } from '../../core/assets/rendering-sub-mesh';
-import { director } from '../../core/director';
+import { Material } from '../../asset/assets/material';
+import { RenderingSubMesh } from '../../asset/assets/rendering-sub-mesh';
+import { director } from '../../game/director';
 import { AttributeName, BufferUsageBit, Format, FormatInfos, MemoryUsageBit, PrimitiveMode,
-    Device, Attribute, Buffer, IndirectBuffer, BufferInfo, DrawInfo, DRAW_INFO_SIZE } from '../../core/gfx';
-import { Color, Mat4, Quat, toRadian, Vec3 } from '../../core/math';
-import { Pool } from '../../core/memop';
-import { scene } from '../../core/renderer';
+    Device, Attribute, Buffer, IndirectBuffer, BufferInfo, DrawInfo, DRAW_INFO_SIZE } from '../../gfx';
+import { Color, Mat4, Quat, toRadian, Vec3, Pool, warnID, cclegacy } from '../../core';
+import { scene } from '../../render-scene';
 import CurveRange from '../animator/curve-range';
 import GradientRange from '../animator/gradient-range';
 import { Space, TextureMode, TrailMode } from '../enum';
 import { Particle } from '../particle';
-import { legacyCC } from '../../core/global-exports';
-import { TransformBit } from '../../core/scene-graph/node-enum';
+import { TransformBit } from '../../scene-graph/node-enum';
 
 const PRE_TRIANGLE_INDEX = 1;
 const NEXT_TRIANGLE_INDEX = 1 << 2;
@@ -215,7 +213,7 @@ export default class TrailModule {
      */
     @type(CurveRange)
     @serializable
-    @range([0, 1])
+    @range([0, Number.POSITIVE_INFINITY])
     @displayOrder(3)
     @tooltip('i18n:trailSegment.lifeTime')
     public lifeTime = new CurveRange();
@@ -280,7 +278,7 @@ export default class TrailModule {
      */
     @type(CurveRange)
     @serializable
-    @range([0, 1])
+    @range([0, Number.POSITIVE_INFINITY])
     @displayOrder(10)
     @tooltip('i18n:trailSegment.widthRatio')
     public widthRatio = new CurveRange();
@@ -338,6 +336,7 @@ export default class TrailModule {
     private _iBuffer: Uint16Array | null = null;
     private _needTransform = false;
     private _material: Material | null = null;
+    private _inited: boolean;
 
     constructor () {
         this._iaInfo = new IndirectBuffer([new DrawInfo()]);
@@ -355,6 +354,8 @@ export default class TrailModule {
         }
 
         this._particleTrail = new Map<Particle, TrailSegment>();
+
+        this._inited = false;
     }
 
     public onInit (ps) {
@@ -368,11 +369,15 @@ export default class TrailModule {
             const b = ps.bursts[i];
             burstCount += b.getMaxCount(ps) * Math.ceil(psTime / duration);
         }
-        this._trailNum = Math.ceil(psTime * this.lifeTime.getMax() * 60 * (psRate * duration + burstCount));
+        if (this.lifeTime.getMax() < 1.0) {
+            warnID(6036);
+        }
+        this._trailNum = Math.ceil(psTime * Math.ceil(this.lifeTime.getMax()) * 60 * (psRate * duration + burstCount));
         this._trailSegments = new Pool(() => new TrailSegment(10), Math.ceil(psRate * duration), (obj: TrailSegment) => obj.trailElements.length = 0);
         if (this._enable) {
             this.enable = this._enable;
         }
+        this._inited = true;
     }
 
     public onEnable () {
@@ -613,7 +618,9 @@ export default class TrailModule {
                 this._fillVertexBuffer(_temp_trailEle, this.colorOverTrail.evaluate(0, 1), indexOffset, 0, trailNum, PRE_TRIANGLE_INDEX);
             }
         }
-        this._trailModel!.enabled = this.ibOffset > 0;
+        if (this._trailModel) {
+            this._trailModel.enabled = this.ibOffset > 0;
+        }
     }
 
     public updateIA (count: number) {
@@ -637,7 +644,7 @@ export default class TrailModule {
             return;
         }
 
-        this._trailModel = legacyCC.director.root.createModel(scene.Model);
+        this._trailModel = cclegacy.director.root.createModel(scene.Model);
     }
 
     private rebuild () {
@@ -675,10 +682,10 @@ export default class TrailModule {
         this._subMeshData = new RenderingSubMesh([vertexBuffer], this._vertAttrs, PrimitiveMode.TRIANGLE_LIST, indexBuffer, this._iaInfoBuffer);
 
         const trailModel = this._trailModel;
-        if (trailModel) {
+        if (trailModel && this._material) {
             trailModel.node = trailModel.transform = this._particleSystem.node;
             trailModel.visFlags = this._particleSystem.visibility;
-            trailModel.initSubModel(0, this._subMeshData, this._material!);
+            trailModel.initSubModel(0, this._subMeshData, this._material);
             trailModel.enabled = true;
         }
     }

@@ -23,17 +23,17 @@
  THE SOFTWARE.
 ****************************************************************************/
 
+#include "platform/android/AndroidPlatform.h"
+#include <android/native_window_jni.h>
 #include <thread>
-
+#include "application/ApplicationManager.h"
 #include "base/Log.h"
 #include "base/memory/Memory.h"
-#include "bindings/event/CustomEventTypes.h"
 #include "game-activity/native_app_glue/android_native_app_glue.h"
 #include "java/jni/JniHelper.h"
 #include "modules/Screen.h"
 #include "modules/System.h"
 #include "platform/BasePlatform.h"
-#include "platform/android/AndroidPlatform.h"
 #include "platform/android/FileUtils-android.h"
 #include "platform/java/jni/JniImp.h"
 #include "platform/java/jni/glue/JniNativeGlue.h"
@@ -41,10 +41,12 @@
 #include "platform/java/modules/Battery.h"
 #include "platform/java/modules/Network.h"
 #include "platform/java/modules/SystemWindow.h"
+#include "platform/java/modules/SystemWindowManager.h"
 #include "platform/java/modules/Vibrator.h"
+#include "platform/java/modules/XRInterface.h"
 
-#include "bindings/event/EventDispatcher.h"
-
+#include "base/StringUtil.h"
+#include "engine/EngineEvents.h"
 #include "paddleboat.h"
 
 #define ABORT_GAME                          \
@@ -63,10 +65,10 @@
 
 #define INPUT_ACTION_COUNT 6
 
-//Interval time per frame, in milliseconds
+// Interval time per frame, in milliseconds
 #define LOW_FREQUENCY_TIME_INTERVAL 50
 
-//Maximum runtime of game threads while in the background, in seconds
+// Maximum runtime of game threads while in the background, in seconds
 #define LOW_FREQUENCY_EXPIRED_DURATION_SECONDS 60
 
 #define CC_ENABLE_SUSPEND_GAME_THREAD true
@@ -91,6 +93,18 @@ static const InputAction PADDLEBOAT_ACTIONS[INPUT_ACTION_COUNT] = {
     {PADDLEBOAT_BUTTON_DPAD_LEFT, static_cast<int>(KeyCode::DPAD_LEFT)},
     {PADDLEBOAT_BUTTON_DPAD_DOWN, static_cast<int>(KeyCode::DPAD_DOWN)},
     {PADDLEBOAT_BUTTON_DPAD_RIGHT, static_cast<int>(KeyCode::DPAD_RIGHT)}};
+
+static const InputAction INPUT_KEY_ACTIONS[] = {
+    {AKEYCODE_BACK, static_cast<int>(KeyCode::MOBILE_BACK)},
+    {AKEYCODE_ENTER, static_cast<int>(KeyCode::ENTER)},
+    {AKEYCODE_MENU, static_cast<int>(KeyCode::ALT_LEFT)},
+    {AKEYCODE_DPAD_UP, static_cast<int>(KeyCode::DPAD_UP)},
+    {AKEYCODE_DPAD_DOWN, static_cast<int>(KeyCode::DPAD_DOWN)},
+    {AKEYCODE_DPAD_LEFT, static_cast<int>(KeyCode::DPAD_LEFT)},
+    {AKEYCODE_DPAD_RIGHT, static_cast<int>(KeyCode::DPAD_RIGHT)},
+    {AKEYCODE_DPAD_CENTER, static_cast<int>(KeyCode::DPAD_CENTER)},
+};
+
 static bool keyState[INPUT_ACTION_COUNT] = {false};
 
 extern void gameControllerStatusCallback(int32_t controllerIndex,
@@ -202,17 +216,31 @@ public:
         return (addedControllerEvent != 0);
     }
 
+    // NOLINTNEXTLINE
     bool cookGameActivityMotionEvent(GameActivityMotionEvent *motionEvent) {
         if (motionEvent->pointerCount > 0) {
+            touchEvent.windowId = ISystemWindow::mainWindowId; // must be main window here
+
             int action = motionEvent->action;
             int actionMasked = action & AMOTION_EVENT_ACTION_MASK;
+            int eventChangedIndex = -1;
 
             if (actionMasked == AMOTION_EVENT_ACTION_DOWN ||
                 actionMasked == AMOTION_EVENT_ACTION_POINTER_DOWN) {
+                if (actionMasked == AMOTION_EVENT_ACTION_POINTER_DOWN) {
+                    eventChangedIndex = action >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
+                } else {
+                    eventChangedIndex = 0;
+                }
                 touchEvent.type = cc::TouchEvent::Type::BEGAN;
             } else if (actionMasked == AMOTION_EVENT_ACTION_UP ||
                        actionMasked == AMOTION_EVENT_ACTION_POINTER_UP) {
                 touchEvent.type = cc::TouchEvent::Type::ENDED;
+                if (actionMasked == AMOTION_EVENT_ACTION_POINTER_UP) {
+                    eventChangedIndex = action >> AMOTION_EVENT_ACTION_POINTER_INDEX_SHIFT;
+                } else {
+                    eventChangedIndex = 0;
+                }
             } else if (actionMasked == AMOTION_EVENT_ACTION_CANCEL) {
                 touchEvent.type = cc::TouchEvent::Type::CANCELLED;
             } else if (actionMasked == AMOTION_EVENT_ACTION_MOVE) {
@@ -221,30 +249,37 @@ public:
                 return false;
             }
 
-            for (int i = 0; i < motionEvent->pointerCount; i++) {
-                int id = motionEvent->pointers[i].id;
-                float x = GameActivityPointerAxes_getX(&motionEvent->pointers[i]);
-                float y = GameActivityPointerAxes_getY(&motionEvent->pointers[i]);
-                touchEvent.touches.emplace_back(x, y, id);
+            if (eventChangedIndex >= 0) {
+                addTouchEvent(eventChangedIndex, motionEvent);
+            } else {
+                for (int i = 0; i < motionEvent->pointerCount; i++) {
+                    addTouchEvent(i, motionEvent);
+                }
             }
-            _androidPlatform->dispatchEvent(touchEvent);
+
+            events::Touch::broadcast(touchEvent);
             touchEvent.touches.clear();
             return true;
         }
         return false;
     }
 
+    // NOLINTNEXTLINE
     bool cookGameActivityKeyEvent(GameActivityKeyEvent *keyEvent) {
-        if (keyEvent->keyCode == AKEYCODE_BACK && 0 == keyEvent->action) {
-            // back key was pressed
-            keyboardEvent.action = cc::KeyboardEvent::Action::PRESS;
-            keyboardEvent.key = static_cast<int>(KeyCode::MOBILE_BACK);
-            _androidPlatform->dispatchEvent(keyboardEvent);
+        for (const auto &action : INPUT_KEY_ACTIONS) {
+            if (action.buttonMask != keyEvent->keyCode) {
+                continue;
+            }
+            keyboardEvent.action = 0 == keyEvent->action ? cc::KeyboardEvent::Action::PRESS
+                                                         : cc::KeyboardEvent::Action::RELEASE;
+            keyboardEvent.key = action.actionCode;
+            events::Keyboard::broadcast(keyboardEvent);
             return true;
         }
         return false;
     }
 
+    // NOLINTNEXTLINE
     void reportKeyState(int keyCode, bool state) {
         bool wentDown = !keyState[keyCode] && state;
         bool wentUp = keyState[keyCode] && !state;
@@ -253,11 +288,11 @@ public:
         if (wentUp) {
             keyboardEvent.key = keyCode;
             keyboardEvent.action = cc::KeyboardEvent::Action::RELEASE;
-            _androidPlatform->dispatchEvent(keyboardEvent);
+            events::Keyboard::broadcast(keyboardEvent);
         } else if (wentDown) {
             keyboardEvent.key = keyCode;
             keyboardEvent.action = cc::KeyboardEvent::Action::PRESS;
-            _androidPlatform->dispatchEvent(keyboardEvent);
+            events::Keyboard::broadcast(keyboardEvent);
         }
     }
 
@@ -277,20 +312,37 @@ public:
                 break;
             case APP_CMD_INIT_WINDOW: {
                 _hasWindow = true;
-                auto *systemWindow = _androidPlatform->getInterface<SystemWindow>();
-                systemWindow->setWindowHandle(_androidPlatform->_app->window);
+                ANativeWindow *nativeWindow = _androidPlatform->_app->window;
+
                 // We have a window!
                 CC_LOG_DEBUG("AndroidPlatform: APP_CMD_INIT_WINDOW");
                 if (!_launched) {
                     _launched = true;
+
+                    ISystemWindowInfo info;
+                    info.width = ANativeWindow_getWidth(nativeWindow);
+                    info.height = ANativeWindow_getHeight(nativeWindow);
+                    info.externalHandle = nativeWindow;
+                    _androidPlatform->getInterface<SystemWindowManager>()->createWindow(info);
+
                     if (cocos_main(0, nullptr) != 0) {
                         CC_LOG_ERROR("AndroidPlatform: Launch game failed!");
+                    } else {
+                        IXRInterface *xr = CC_GET_XR_INTERFACE();
+                        if (xr) {
+                            xr->onRenderResume();
+                        }
                     }
                 } else {
-                    cc::CustomEvent event;
-                    event.name = EVENT_RECREATE_WINDOW;
-                    event.args->ptrVal = reinterpret_cast<void *>(_androidPlatform->_app->window);
-                    _androidPlatform->dispatchEvent(event);
+                    IXRInterface *xr = CC_GET_XR_INTERFACE();
+                    if (xr) {
+                        xr->onRenderResume();
+                    }
+
+                    auto *windowMgr = _androidPlatform->getInterface<SystemWindowManager>();
+                    auto *window = static_cast<cc::SystemWindow *>(windowMgr->getWindow(ISystemWindow::mainWindowId));
+                    window->setWindowHandle(nativeWindow);
+                    events::WindowRecreated::broadcast(ISystemWindow::mainWindowId);
                 }
                 break;
             }
@@ -298,10 +350,12 @@ public:
                 _hasWindow = false;
                 // The window is going away -- kill the surface
                 CC_LOG_DEBUG("AndroidPlatform: APP_CMD_TERM_WINDOW");
-                cc::CustomEvent event;
-                event.name = EVENT_DESTROY_WINDOW;
-                event.args->ptrVal = reinterpret_cast<void *>(_androidPlatform->_app->window);
-                _androidPlatform->dispatchEvent(event);
+                IXRInterface *xr = CC_GET_XR_INTERFACE();
+                if (xr) {
+                    xr->onRenderPause();
+                }
+                // NOLINTNEXTLINE
+                events::WindowDestroy::broadcast(ISystemWindow::mainWindowId);
                 break;
             }
             case APP_CMD_GAINED_FOCUS:
@@ -323,9 +377,13 @@ public:
             }
             case APP_CMD_DESTROY: {
                 CC_LOG_INFO("AndroidPlatform: APP_CMD_DESTROY");
+                IXRInterface *xr = _androidPlatform->getInterface<IXRInterface>();
+                if (xr) {
+                    xr->onRenderDestroy();
+                }
                 WindowEvent ev;
                 ev.type = WindowEvent::Type::CLOSE;
-                _androidPlatform->dispatchEvent(ev);
+                events::WindowEvent::broadcast(ev);
                 _androidPlatform->onDestroy();
                 break;
             }
@@ -335,7 +393,7 @@ public:
                 Paddleboat_onStop(_jniEnv);
                 WindowEvent ev;
                 ev.type = WindowEvent::Type::HIDDEN;
-                _androidPlatform->dispatchEvent(ev);
+                events::WindowEvent::broadcast(ev);
                 break;
             }
             case APP_CMD_START: {
@@ -344,7 +402,7 @@ public:
                 Paddleboat_onStart(_jniEnv);
                 WindowEvent ev;
                 ev.type = WindowEvent::Type::SHOW;
-                _androidPlatform->dispatchEvent(ev);
+                events::WindowEvent::broadcast(ev);
                 break;
             }
             case APP_CMD_WINDOW_RESIZED: {
@@ -353,7 +411,7 @@ public:
                 ev.type = cc::WindowEvent::Type::SIZE_CHANGED;
                 ev.width = ANativeWindow_getWidth(_androidPlatform->_app->window);
                 ev.height = ANativeWindow_getHeight(_androidPlatform->_app->window);
-                _androidPlatform->dispatchEvent(ev);
+                events::WindowEvent::broadcast(ev);
                 break;
             }
             case APP_CMD_CONFIG_CHANGED:
@@ -367,9 +425,7 @@ public:
                 // system told us we have low memory. So if we are not visible, let's
                 // cooperate by deallocating all of our graphic resources.
                 CC_LOG_INFO("AndroidPlatform: APP_CMD_LOW_MEMORY");
-                DeviceEvent ev;
-                ev.type = DeviceEvent::Type::MEMORY;
-                _androidPlatform->dispatchEvent(ev);
+                events::LowMemory::broadcast();
                 break;
             }
             case APP_CMD_CONTENT_RECT_CHANGED:
@@ -409,6 +465,16 @@ public:
     }
 
 private:
+    static void addTouchEvent(int index, GameActivityMotionEvent *motionEvent) {
+        if (index < 0 || index >= motionEvent->pointerCount) {
+            ABORT_IF(false);
+        }
+        int id = motionEvent->pointers[index].id;
+        float x = GameActivityPointerAxes_getX(&motionEvent->pointers[index]);
+        float y = GameActivityPointerAxes_getY(&motionEvent->pointers[index]);
+        touchEvent.touches.emplace_back(x, y, id);
+    }
+
     AppEventCallback _eventCallback{nullptr};
     AndroidPlatform *_androidPlatform{nullptr};
     JNIEnv *_jniEnv{nullptr};         // JNI environment
@@ -456,7 +522,15 @@ void gameControllerStatusCallback(const int32_t controllerIndex,
 AndroidPlatform::~AndroidPlatform() = default;
 
 int AndroidPlatform::init() {
-    cc::FileUtilsAndroid::setassetmanager(_app->activity->assetManager);
+#if CC_USE_XR
+    registerInterface(std::make_shared<XRInterface>());
+#endif
+    IXRInterface *xr = CC_GET_XR_INTERFACE();
+    if (xr) {
+        JniHelper::getEnv();
+        xr->initialize(JniHelper::getJavaVM(), getActivity());
+    }
+    cc::FileUtilsAndroid::setAssetManager(_app->activity->assetManager);
     _inputProxy = ccnew GameInputProxy(this);
     _inputProxy->registerAppEventCallback([this](int32_t cmd) {
         if (APP_CMD_START == cmd || APP_CMD_INIT_WINDOW == cmd) {
@@ -468,6 +542,12 @@ int AndroidPlatform::init() {
             _lowFrequencyTimer.reset();
             _loopTimeOut = LOW_FREQUENCY_TIME_INTERVAL;
             _isLowFrequencyLoopEnabled = true;
+            IXRInterface *xr = getInterface<IXRInterface>();
+            if (xr && !xr->getXRConfig(xr::XRConfigKey::INSTANCE_CREATED).getBool()) {
+                // xr will sleep,  -1 we will block forever waiting for events.
+                _loopTimeOut = -1;
+                _isLowFrequencyLoopEnabled = false;
+            }
         }
     });
     _app->userData = _inputProxy;
@@ -478,7 +558,7 @@ int AndroidPlatform::init() {
     registerInterface(std::make_shared<Network>());
     registerInterface(std::make_shared<Screen>());
     registerInterface(std::make_shared<System>());
-    registerInterface(std::make_shared<SystemWindow>());
+    registerInterface(std::make_shared<SystemWindowManager>());
     registerInterface(std::make_shared<Vibrator>());
 
     return 0;
@@ -487,7 +567,12 @@ int AndroidPlatform::init() {
 void AndroidPlatform::onDestroy() {
     UniversalPlatform::onDestroy();
     unregisterAllInterfaces();
+    JniHelper::onDestroy();
     CC_SAFE_DELETE(_inputProxy)
+}
+
+cc::ISystemWindow *AndroidPlatform::createNativeWindow(uint32_t windowId, void *externalHandle) {
+    return ccnew SystemWindow(windowId, externalHandle);
 }
 
 int AndroidPlatform::getSdkVersion() const {
@@ -500,6 +585,7 @@ int32_t AndroidPlatform::run(int /*argc*/, const char ** /*argv*/) {
 }
 
 int32_t AndroidPlatform::loop() {
+    IXRInterface *xr = getInterface<IXRInterface>();
     while (true) {
         int events;
         struct android_poll_source *source;
@@ -517,9 +603,13 @@ int32_t AndroidPlatform::loop() {
                 return 0;
             }
         }
+
+        if (xr && !xr->platformLoopStart()) continue;
         _inputProxy->handleInput();
-        if (_inputProxy->isAnimating()) {
+        if (_inputProxy->isAnimating() && (xr ? xr->getXRConfig(xr::XRConfigKey::SESSION_RUNNING).getBool() : true)) {
+            if (xr) xr->beginRenderFrame();
             runTask();
+            if (xr) xr->endRenderFrame();
             if (_inputProxy->isActive()) {
                 flushTasksOnGameThreadAtForegroundJNI();
             }
@@ -528,13 +618,14 @@ int32_t AndroidPlatform::loop() {
 
 #if CC_ENABLE_SUSPEND_GAME_THREAD
         if (_isLowFrequencyLoopEnabled) {
-            //Suspend a game thread after it has been running in the background for a specified amount of time
+            // Suspend a game thread after it has been running in the background for a specified amount of time
             if (_lowFrequencyTimer.getSeconds() > LOW_FREQUENCY_EXPIRED_DURATION_SECONDS) {
                 _isLowFrequencyLoopEnabled = false;
                 _loopTimeOut = -1;
             }
         }
 #endif
+        if (xr) xr->platformLoopEnd();
     }
 }
 

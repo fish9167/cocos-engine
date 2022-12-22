@@ -1059,17 +1059,27 @@ interface Macro {
      * @zh Batcher2D 中内存增量的大小（KB）
      * 这个值决定了当场景中存在的 2d 渲染组件的顶点数量超过当前 batcher2D 中可容纳的顶点数量时，内存扩充的增加量
      * 这个值越大，共用同一个 meshBuffer 的 2d 渲染组件数量会更多，但每次扩充所占用的内存也会更大
-     * 默认值在标准格式（[[vfmtPosUvColor]]）下可容纳 4096 个顶点（4096*9*4/1024），你可以增加容量来提升每个批次可容纳的元素数量
+     * 默认值在标准格式（[[VertexFormat.vfmtPosUvColor]]）下可容纳 4096 个顶点（4096*9*4/1024），你可以增加容量来提升每个批次可容纳的元素数量
      * @en The MeshBuffer chunk size in Batcher2D (KB)
      * This value determines the increase in memory expansion,
      * when the number of vertices of 2d rendering components present in the scene exceeds the number of vertices,
      * that can be accommodated in the current batcher2D.
      * The larger this value is, the more 2d rendering components will share the same meshBuffer, but the more memory will be used for each expansion
-     * The default size can contain 4096 standard vertex ([[vfmtPosUvColor]]) in one buffer,
+     * The default size can contain 4096 standard vertex ([[VertexFormat.vfmtPosUvColor]]) in one buffer,
      * you can user larger buffer size to increase the elements count per 2d draw batch.
      * @default 144 KB
      */
     BATCHER2D_MEM_INCREMENT: number;
+
+    /**
+     * @zh 自定义渲染管线的名字（实验性）
+     * 引擎会根据名字创建对应的渲染管线（仅限Web平台）。如果名字为空，则不启用自定义渲染管线。
+     * 目前仅支持'Forward', 'Deferred'两种。
+     * @en The name of custom rendering pipeline (experimental)
+     * Engine will use the name to create the custom pipeline (Web only). If the name is empty, custom pipeline will be disabled.
+     * Currently only 'Forward' and 'Deferred' are supported.
+     */
+    CUSTOM_PIPELINE_NAME: string;
 
     /**
      * @internal
@@ -1104,6 +1114,7 @@ const macro: Macro = {
     MAX_LABEL_CANVAS_POOL_SIZE: 20,
     ENABLE_WEBGL_HIGHP_STRUCT_VALUES: false,
     BATCHER2D_MEM_INCREMENT: 144,
+    CUSTOM_PIPELINE_NAME: '',
     init () {
         if (NATIVE || MINIGAME || RUNTIME_BASED) {
             this.CLEANUP_IMAGE_CACHE = true;

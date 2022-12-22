@@ -67,6 +67,23 @@ public:
     BaseEngine::Ptr getEngine() const override;
 
     /**
+     * @brief Get arguments passed to execution file
+     */
+    const std::vector<std::string> &getArguments() const override;
+
+protected:
+    /**
+     * @brief Set arguments passed to execution file
+     * @note setArgumentsInternal needs to be protected since it should only be used internally.
+     */
+    void setArgumentsInternal(int argc, const char *argv[]) override;
+
+public:
+    /**
+     * @brief Processing engine start events.
+     */
+    virtual void onStart();
+    /**
      * @brief Processing pause events..
      */
     virtual void onPause();
@@ -123,7 +140,13 @@ public:
     virtual void setXXTeaKey(const ccstd::string &key);
 
 private:
+    void unregisterAllEngineEvents();
+
     ISystemWindow *_systemWindow{nullptr};
     BaseEngine::Ptr _engine{nullptr};
+
+    BaseEngine::EngineStatusChange::EventID _engineEvents;
+
+    std::vector<std::string> _argv;
 };
 } // namespace cc

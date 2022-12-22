@@ -48,12 +48,21 @@
 
 #if SCRIPT_ENGINE_TYPE == SCRIPT_ENGINE_V8
 
+namespace {
+bool gIsIsolateValid = false;
+}
+
 namespace se {
+
+/* static */
+void ObjectWrap::setIsolateValid(bool valid) {
+    gIsIsolateValid = valid;
+}
 
 ObjectWrap::ObjectWrap() = default;
 
 ObjectWrap::~ObjectWrap() {
-    if (persistent().IsEmpty()) {
+    if (!gIsIsolateValid || persistent().IsEmpty()) {
         return;
     }
     //cjh            CC_ASSERT(persistent().IsNearDeath());
@@ -85,6 +94,11 @@ void ObjectWrap::wrap(void *nativeObj, uint32_t fieldIndex) {
     CC_ASSERT(handle()->InternalFieldCount() > 0);
     CC_ASSERT(fieldIndex >= 0 && fieldIndex < 1);
     handle()->SetAlignedPointerInInternalField(static_cast<int>(fieldIndex), nativeObj);
+    if (nativeObj) {
+        persistent().SetWrapperClassId(MAGIC_CLASS_ID_JSB);
+    } else {
+        persistent().SetWrapperClassId(0);
+    }
 }
 
 v8::Local<v8::Object> ObjectWrap::handle() {
@@ -127,9 +141,12 @@ void ObjectWrap::ref() {
 }
 
 void ObjectWrap::unref() {
+    if (!gIsIsolateValid) {
+        return;
+    }
     CC_ASSERT(!persistent().IsEmpty());
     CC_ASSERT(!persistent().IsWeak());
-    CC_ASSERT(_refs > 0);
+    CC_ASSERT_GT(_refs, 0);
     if (--_refs == 0) {
         makeWeak();
     }
@@ -145,7 +162,7 @@ void ObjectWrap::weakCallback(const v8::WeakCallbackInfo<Object> &data) {
     if (wrap->_finalizeCb != nullptr) {
         wrap->_finalizeCb(seObj);
     } else {
-        CC_ASSERT(false);
+        CC_ABORT();
     }
 }
 

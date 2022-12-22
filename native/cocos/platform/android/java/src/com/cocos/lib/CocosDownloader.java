@@ -33,6 +33,7 @@ import org.cocos2dx.okhttp3.Call;
 import org.cocos2dx.okhttp3.Callback;
 import org.cocos2dx.okhttp3.Dispatcher;
 import org.cocos2dx.okhttp3.OkHttpClient;
+import org.cocos2dx.okhttp3.Protocol;
 import org.cocos2dx.okhttp3.Request;
 import org.cocos2dx.okhttp3.Response;
 
@@ -45,6 +46,7 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Map;
@@ -104,13 +106,15 @@ public class CocosDownloader {
                     .dispatcher(dispatcher)
                     .followRedirects(true)
                     .followSslRedirects(true)
-                    .callTimeout(timeoutInSeconds, TimeUnit.SECONDS)
+                    .connectTimeout(timeoutInSeconds, TimeUnit.SECONDS)
+                    .protocols(Collections.singletonList(Protocol.HTTP_1_1))
                     .build();
         } else {
             downloader._httpClient = new OkHttpClient().newBuilder()
                     .dispatcher(dispatcher)
                     .followRedirects(true)
                     .followSslRedirects(true)
+                    .protocols(Collections.singletonList(Protocol.HTTP_1_1))
                     .build();
         }
 
@@ -157,6 +161,17 @@ public class CocosDownloader {
                         if (tempFile.isDirectory()) break;
 
                         File parent = tempFile.getParentFile();
+                        if (parent == null) {
+                            String errStr = "Invalid path " + path + " : The current path is inaccessible.";
+                            Log.e("CocosDownloader", errStr);
+                            CocosHelper.runOnGameThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    downloader.nativeOnFinish(downloader._id, id, 0, errStr, null);
+                                }
+                            });
+                            break;
+                        }
                         if (!parent.isDirectory() && !parent.mkdirs()) break;
 
                         finalFile = new File(path);

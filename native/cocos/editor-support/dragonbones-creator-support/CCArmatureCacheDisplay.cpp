@@ -22,6 +22,8 @@
  */
 
 #include "CCArmatureCacheDisplay.h"
+#include "2d/renderer/RenderDrawInfo.h"
+#include "2d/renderer/RenderEntity.h"
 #include "ArmatureCacheMgr.h"
 #include "CCFactory.h"
 #include "MiddlewareManager.h"
@@ -30,6 +32,7 @@
 #include "base/memory/Memory.h"
 #include "gfx-base/GFXDef.h"
 #include "math/Math.h"
+#include "renderer/core/MaterialInstance.h"
 
 using namespace cc;      // NOLINT(google-build-using-namespace)
 using namespace cc::gfx; // NOLINT(google-build-using-namespace)
@@ -51,19 +54,11 @@ CCArmatureCacheDisplay::CCArmatureCacheDisplay(const std::string &armatureName, 
         _armatureCache->addRef();
     } else {
         _armatureCache = new ArmatureCache(armatureName, armatureKey, atlasUUID);
+        _armatureCache->addRef();
     }
 
     // store global TypedArray begin and end offset
     _sharedBufferOffset = new IOTypedArray(se::Object::TypedArrayType::UINT32, sizeof(uint32_t) * 2);
-
-    // store render order(1), world matrix(16)
-    _paramsBuffer = new IOTypedArray(se::Object::TypedArrayType::FLOAT32, sizeof(float) * 17);
-    // set render order to 0
-    _paramsBuffer->writeFloat32(0);
-    // set world transform to identity
-    _paramsBuffer->writeBytes(reinterpret_cast<const char *>(&cc::Mat4::IDENTITY), sizeof(float) * 16);
-
-    beginSchedule();
 }
 
 CCArmatureCacheDisplay::~CCArmatureCacheDisplay() {
@@ -73,10 +68,12 @@ CCArmatureCacheDisplay::~CCArmatureCacheDisplay() {
         delete _sharedBufferOffset;
         _sharedBufferOffset = nullptr;
     }
+    for (auto *draw : _drawInfoArray) {
+        CC_SAFE_DELETE(draw);
+    }
 
-    if (_paramsBuffer) {
-        delete _paramsBuffer;
-        _paramsBuffer = nullptr;
+    for (auto &item : _materialCaches) {
+        CC_SAFE_DELETE(item.second);
     }
 }
 
@@ -143,6 +140,8 @@ void CCArmatureCacheDisplay::render(float /*dt*/) {
 
     auto *mgr = MiddlewareManager::getInstance();
     if (!mgr->isRendering) return;
+    auto *entity = _entity;
+    entity->clearDynamicRenderDrawInfos();
 
     const auto &segments = frameData->getSegments();
     const auto &colors = frameData->getColors();
@@ -150,26 +149,12 @@ void CCArmatureCacheDisplay::render(float /*dt*/) {
     _sharedBufferOffset->reset();
     _sharedBufferOffset->clear();
 
-    auto *renderMgr = mgr->getRenderInfoMgr();
-    auto *renderInfo = renderMgr->getBuffer();
-    if (!renderInfo) return;
-
     auto *attachMgr = mgr->getAttachInfoMgr();
     auto *attachInfo = attachMgr->getBuffer();
     if (!attachInfo) return;
 
-    //  store render info offset
-    _sharedBufferOffset->writeUint32(static_cast<uint32_t>(renderInfo->getCurPos()) / sizeof(uint32_t));
     // store attach info offset
     _sharedBufferOffset->writeUint32(static_cast<uint32_t>(attachInfo->getCurPos()) / sizeof(uint32_t));
-
-    // check enough space
-    renderInfo->checkSpace(sizeof(uint32_t) * 2, true);
-    // write border
-    renderInfo->writeUint32(0xffffffff);
-
-    // matieral len
-    renderInfo->writeUint32(segments.size());
 
     if (segments.empty() || colors.empty()) return;
 
@@ -178,15 +163,13 @@ void CCArmatureCacheDisplay::render(float /*dt*/) {
     middleware::IOBuffer &ib = mb->getIB();
     const auto &srcVB = frameData->vb;
     const auto &srcIB = frameData->ib;
-
-    auto *paramsBuffer = _paramsBuffer->getBuffer();
-    const cc::Mat4 &nodeWorldMat = *reinterpret_cast<cc::Mat4 *>(&paramsBuffer[4]);
+    auto &nodeWorldMat = entity->getNode()->getWorldMatrix();
 
     int colorOffset = 0;
     ArmatureCache::ColorData *nowColor = colors[colorOffset++];
     auto maxVFOffset = nowColor->vertexFloatOffset;
 
-    Color4F color;
+    Color4B color;
 
     float tempR = 0.0F;
     float tempG = 0.0F;
@@ -197,7 +180,6 @@ void CCArmatureCacheDisplay::render(float /*dt*/) {
     std::size_t srcIndexBytesOffset = 0;
     std::size_t vertexBytes = 0;
     std::size_t indexBytes = 0;
-    int curTextureIndex = 0;
     BlendMode blendMode = BlendMode::Normal;
     std::size_t dstVertexOffset = 0;
     std::size_t dstIndexOffset = 0;
@@ -207,6 +189,8 @@ void CCArmatureCacheDisplay::render(float /*dt*/) {
     bool needColor = false;
     int curBlendSrc = -1;
     int curBlendDst = -1;
+    cc::Texture2D *curTexture = nullptr;
+    RenderDrawInfo *curDrawInfo = nullptr;
 
     if (abs(_nodeColor.r - 1.0F) > 0.0001F ||
         abs(_nodeColor.g - 1.0F) > 0.0001F ||
@@ -223,23 +207,24 @@ void CCArmatureCacheDisplay::render(float /*dt*/) {
         tempG = _nodeColor.g * multiplier;
         tempB = _nodeColor.b * multiplier;
 
-        color.a = tempA;
-        color.r = colorData->color.r * tempR;
-        color.g = colorData->color.g * tempG;
-        color.b = colorData->color.b * tempB;
+        color.a = (uint8_t)floorf(tempA);
+        color.r = (uint8_t)floorf(colorData->color.r * tempR);
+        color.g = (uint8_t)floorf(colorData->color.g * tempG);
+        color.b = (uint8_t)floorf(colorData->color.b * tempB);
     };
 
     handleColor(nowColor);
-
+    int segmentCount = 0;
     for (auto *segment : segments) {
         vertexBytes = segment->vertexFloatCount * sizeof(float);
-
-        // check enough space
-        renderInfo->checkSpace(sizeof(uint32_t) * 6, true);
-
+        curDrawInfo = requestDrawInfo(segmentCount++);
+        entity->addDynamicRenderDrawInfo(curDrawInfo);
         // fill new texture index
-        curTextureIndex = segment->getTexture()->getRealTextureIndex();
-        renderInfo->writeUint32(curTextureIndex);
+        curTexture = static_cast<cc::Texture2D *>(segment->getTexture()->getRealTexture());
+        gfx::Texture *texture = curTexture->getGFXTexture();
+        gfx::Sampler *sampler = curTexture->getGFXSampler();
+        curDrawInfo->setTexture(texture);
+        curDrawInfo->setSampler(sampler);
 
         blendMode = static_cast<BlendMode>(segment->blendMode);
         switch (blendMode) {
@@ -261,20 +246,20 @@ void CCArmatureCacheDisplay::render(float /*dt*/) {
                 break;
         }
         // fill new blend src and dst
-        renderInfo->writeUint32(curBlendSrc);
-        renderInfo->writeUint32(curBlendDst);
+        auto *material = requestMaterial(curBlendSrc, curBlendDst);
+        curDrawInfo->setMaterial(material);
 
         // fill vertex buffer
         vb.checkSpace(vertexBytes, true);
-        dstVertexOffset = vb.getCurPos() / sizeof(V2F_T2F_C4F);
+        dstVertexOffset = vb.getCurPos() / sizeof(V3F_T2F_C4B);
         dstVertexBuffer = reinterpret_cast<float *>(vb.getCurBuffer());
         dstColorBuffer = reinterpret_cast<unsigned int *>(vb.getCurBuffer());
         vb.writeBytes(reinterpret_cast<char *>(srcVB.getBuffer()) + srcVertexBytesOffset, vertexBytes);
-
+        // batch handle
         cc::Vec3 *point = nullptr;
+
         for (auto posIndex = 0; posIndex < segment->vertexFloatCount; posIndex += VF_XYZUVC) {
             point = reinterpret_cast<cc::Vec3 *>(dstVertexBuffer + posIndex);
-            // force z value to zero
             point->z = 0;
             point->transformMat4(*point, nodeWorldMat);
         }
@@ -306,13 +291,13 @@ void CCArmatureCacheDisplay::render(float /*dt*/) {
         srcIndexBytesOffset += indexBytes;
 
         // fill new index and vertex buffer id
-        auto bufferIndex = mb->getBufferPos();
-        renderInfo->writeUint32(bufferIndex);
+        UIMeshBuffer *uiMeshBuffer = mb->getUIMeshBuffer();
+        curDrawInfo->setMeshBuffer(uiMeshBuffer);
 
         // fill new index offset
-        renderInfo->writeUint32(dstIndexOffset);
+        curDrawInfo->setIndexOffset(dstIndexOffset);
         // fill new indice segamentation count
-        renderInfo->writeUint32(segment->indexCount);
+        curDrawInfo->setIbCount(segment->indexCount);
     }
 
     if (_useAttach) {
@@ -408,6 +393,16 @@ void CCArmatureCacheDisplay::setAttachEnabled(bool enabled) {
     _useAttach = enabled;
 }
 
+void CCArmatureCacheDisplay::setBatchEnabled(bool enabled) {
+    if (enabled != _enableBatch) {
+        for (auto &item : _materialCaches) {
+            CC_SAFE_DELETE(item.second);
+        }
+        _materialCaches.clear();
+        _enableBatch = enabled;
+    }
+}
+
 se_object_ptr CCArmatureCacheDisplay::getSharedBufferOffset() const {
     if (_sharedBufferOffset) {
         return _sharedBufferOffset->getTypeArray();
@@ -415,19 +410,53 @@ se_object_ptr CCArmatureCacheDisplay::getSharedBufferOffset() const {
     return nullptr;
 }
 
-se_object_ptr CCArmatureCacheDisplay::getParamsBuffer() const {
-    if (_paramsBuffer) {
-        return _paramsBuffer->getTypeArray();
-    }
-    return nullptr;
+void CCArmatureCacheDisplay::setRenderEntity(cc::RenderEntity *entity) {
+    _entity = entity;
 }
 
-uint32_t CCArmatureCacheDisplay::getRenderOrder() const {
-    if (_paramsBuffer) {
-        auto *buffer = _paramsBuffer->getBuffer();
-        return static_cast<uint32_t>(buffer[0]);
+void CCArmatureCacheDisplay::setMaterial(cc::Material *material) {
+    _material = material;
+    for (auto &item : _materialCaches) {
+        CC_SAFE_DELETE(item.second);
     }
-    return 0;
+    _materialCaches.clear();
+}
+
+cc::RenderDrawInfo *CCArmatureCacheDisplay::requestDrawInfo(int idx) {
+    if (_drawInfoArray.size() < idx + 1) {
+        cc::RenderDrawInfo *draw = new cc::RenderDrawInfo();
+        draw->setDrawInfoType(static_cast<uint32_t>(RenderDrawInfoType::MIDDLEWARE));
+        _drawInfoArray.push_back(draw);
+    }
+    return _drawInfoArray[idx];
+}
+
+cc::Material *CCArmatureCacheDisplay::requestMaterial(uint16_t blendSrc, uint16_t blendDst) {
+    uint32_t key = static_cast<uint32_t>(blendSrc) << 16 | static_cast<uint32_t>(blendDst);
+    if (_materialCaches.find(key) == _materialCaches.end()) {
+        const IMaterialInstanceInfo info{
+            (Material *)_material,
+            0};
+        MaterialInstance *materialInstance = new MaterialInstance(info);
+        PassOverrides overrides;
+        BlendStateInfo stateInfo;
+        stateInfo.blendColor = gfx::Color{1.0F, 1.0F, 1.0F, 1.0F};
+        BlendTargetInfo targetInfo;
+        targetInfo.blendEq = gfx::BlendOp::ADD;
+        targetInfo.blendAlphaEq = gfx::BlendOp::ADD;
+        targetInfo.blendSrc = (gfx::BlendFactor)blendSrc;
+        targetInfo.blendDst = (gfx::BlendFactor)blendDst;
+        targetInfo.blendSrcAlpha = (gfx::BlendFactor)blendSrc;
+        targetInfo.blendDstAlpha = (gfx::BlendFactor)blendDst;
+        BlendTargetInfoList targetList{targetInfo};
+        stateInfo.targets = targetList;
+        overrides.blendState = stateInfo;
+        materialInstance->overridePipelineStates(overrides);
+        const MacroRecord macros{{"USE_LOCAL", false}};
+        materialInstance->recompileShaders(macros);
+        _materialCaches[key] = materialInstance;
+    }
+    return _materialCaches[key];
 }
 
 DRAGONBONES_NAMESPACE_END

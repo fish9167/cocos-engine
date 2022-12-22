@@ -32,7 +32,10 @@ exports.methods = {
         $group.$header.addEventListener('change', (e) => {
             const tabNames = Object.keys($group.tabs);
             const tabName = tabNames[e.target.value || 0];
-            $group.querySelectorAll('.tab-content').forEach((child) => {
+            $group.childNodes.forEach((child) => {
+                if (!child.classList.contains('tab-content')) {
+                    return;
+                }
                 if (child.getAttribute('name') === tabName) {
                     child.style.display = 'block';
                 } else {
@@ -47,6 +50,17 @@ exports.methods = {
             }
         });
         return $group;
+    },
+    toggleGroups($groups) {
+        for (const key in $groups) {
+            const $props = Array.from($groups[key].querySelectorAll('.tab-content > ui-prop'));
+            const show = $props.some($prop => getComputedStyle($prop).display !== 'none');
+            if (show) {
+                $groups[key].removeAttribute('hidden');
+            } else {
+                $groups[key].setAttribute('hidden', '');
+            }
+        }
     },
     appendToTabGroup($group, tabName) {
         if ($group.tabs[tabName]) {
@@ -91,6 +105,11 @@ exports.methods = {
  */
 async function update(dump) {
     const $panel = this;
+
+    if (!$panel.$this.isConnected) {
+        return;
+    }
+
     const $section = $panel.$.section;
     const oldPropList = Object.keys($panel.$propList);
     const newPropList = [];
@@ -114,7 +133,7 @@ async function update(dump) {
             $prop.setAttribute('type', 'dump');
             $panel.$propList[id] = $prop;
 
-            const _displayOrder = info.group?.displayOrder || info.displayOrder;
+            const _displayOrder = info.group?.displayOrder ?? info.displayOrder;
             $prop.displayOrder = _displayOrder === undefined ? index : Number(_displayOrder);
 
             if (info.group && dump.groups) {
@@ -155,6 +174,8 @@ async function update(dump) {
             }
         }
     }
+
+    $panel.toggleGroups($panel.$groups);
 }
 exports.update = update;
 async function ready() {
@@ -168,6 +189,7 @@ async function close() {
     for (const key in $panel.$groups) {
         $panel.$groups[key].remove();
     }
-    $panel.$groups = undefined;
+
+    $panel.$groups = {};
 }
 exports.close = close;

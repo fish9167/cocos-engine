@@ -61,10 +61,11 @@ const ErrorCodeIncompatible = 15004;
 export interface INativePlatformOptions {
     extends?: InternaleNativePlatform, //传入继承的平台，将会继承已有平台注册的一些代码
     overwrite?: InternaleNativePlatform, //传入继承但如果有同名的方法等会复写平台，将会继承已有平台注册的一些代码
-    create?: () => Promise<boolean>;
-    compile?: () => Promise<boolean>;
+    create: () => Promise<boolean>;
+    genrate: () => Promise<boolean>;
+    make?: () => Promise<boolean>;
     run?: () => Promise<boolean>;
-    init?: (params: CocosParams<Object>) => void;
+    init: (params: CocosParams<Object>) => void;
 }
 
 export abstract class NativePackTool {
@@ -206,7 +207,7 @@ export abstract class NativePackTool {
             }
 
             if(!fs.existsSync(srcFile)) {
-                console.error(`${f} not exists in ${commonSrc}`);
+                console.warn(`${f} not exists in ${commonSrc}`);
                 return false;
             }
 
@@ -239,7 +240,7 @@ export abstract class NativePackTool {
         let versionRange = this.tryGetCompatibilityInfo();
         const projEngineVersion = projEngineVersionObj?.version;
         if (!versionRange) {
-            console.error(`Ignore version range check`);
+            console.warn(`Ignore version range check`);
             return true;
         }
         if (projEngineVersionObj.skipCheck === true) {
@@ -305,11 +306,12 @@ export abstract class NativePackTool {
         this.validateDirectory(commonSrc, commonDst, missingDirs);
         this.validatePlatformDirectory(missingDirs);
         if (missingDirs.length > 0) {
-            console.error(`Following files are missing`);
+            console.log(`Following files are missing`);
             for (let f of missingDirs) {
-                console.error(`  ${f}`);
+                console.log(`  ${f}`);
             }
-            console.error(`Consider fix the problem or remove the directory`);
+            console.log(`Consider fix the problem or remove the directory`);
+            console.log(`To avoid this warning, set field \'skipCheck\' in cocos-version.json to true.`);
             return false;
         }
         return true;
@@ -324,12 +326,12 @@ export abstract class NativePackTool {
         try {
             if (this.validateTemplateVersion()) {
                 if (!this.skipVersionCheck && !this.validateTemplateConsistency()) {
-                    console.error(`Failed to validate "native" directory`);
+                    console.log(`Failed to validate "native" directory`);
                 }
             }
         } catch (e) {
-            console.error(`Failed to validate native directory`);
-            console.error(e);
+            console.warn(`Failed to validate native directory`);
+            console.warn(e);
         }
     }
 
@@ -432,7 +434,7 @@ export abstract class NativePackTool {
     }
 
     /**
-     * 加密脚本，加密后，会修改 cmake 参数，因而要在 cmake 命令执行之前
+     * 加密脚本，加密后，会修改 cmake 参数，因而需要再次执行 cmake 配置文件的生成
      * @returns 
      */
     protected async encrypteScripts() {
@@ -492,7 +494,8 @@ export abstract class NativePackTool {
         }
     }
 
-    create?(): Promise<boolean>;
+    abstract create(): Promise<boolean>;
+    generate?(): Promise<boolean>;
     make?(): Promise<boolean>;
     run?(): Promise<boolean>;
 }
@@ -504,6 +507,7 @@ export class CocosParams<T> {
     public projectName: string;
     public cmakePath: string;
     public platform: string;
+    public platformName: string;
     /**
      * engine root
      */
@@ -562,6 +566,7 @@ export class CocosParams<T> {
         this.debug = params.debug;
         this.cmakePath = params.cmakePath;
         this.platform = params.platform;
+        this.platformName = params.platformName;
         this.enginePath = params.enginePath;
         this.nativeEnginePath = params.nativeEnginePath;
         this.projDir = params.projDir;

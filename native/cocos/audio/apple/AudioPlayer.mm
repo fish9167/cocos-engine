@@ -167,6 +167,9 @@ bool AudioPlayer::play2d() {
                 CHECK_AL_ERROR_DEBUG();
             }
         } else {
+            if (_currTime > _audioCache->_duration) {
+                _currTime = 0.F; // Target current start time is invalid, reset to 0.
+            }
             alGenBuffers(QUEUEBUFFER_NUM, _bufferIds);
 
             auto alError = alGetError();
@@ -217,7 +220,7 @@ bool AudioPlayer::play2d() {
          * So the assert here will trigger this bug as aolSource is reused.
          * Replace OpenAL with AVAudioEngine on V3.6 mightbe helpful
         */
-//        CC_ASSERT(state == AL_PLAYING);
+//        CC_ASSERT_EQ(state, AL_PLAYING);
         _ready = true;
         ret = true;
     } while (false);

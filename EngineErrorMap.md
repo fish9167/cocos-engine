@@ -1838,6 +1838,7 @@ We don't currently support conversion of \`CubicSplineQuatValue\`.
 Instancing/Batching enabled for non-baked skinning model '%s', this may result in unexpected rendering artifacts. Consider turning it off in the material if you do not intend to do this.
 
 ### 3937
+
 Previous error occurred when instantiating animation clip %s on node %s.
 
 ### 3938
@@ -2466,6 +2467,14 @@ cc.ParticleSystem: not allowing create to be invoked twice with different partic
 ### 6034
 
 cc.ParticleSystem: shouldn't be initialized repetitively, otherwise there will be potential leak
+
+### 6035
+
+cc.ParticleSystem: change material failed, please use proper particle material
+
+### 6036
+
+cc.ParticleSystem: life time should bigger than 1 or buffer will be insufficient
 
 ### 6100
 
@@ -3096,6 +3105,10 @@ BATCHER2D_MEM_INCREMENT is too large, the Max value for BATCHER2D_MEM_INCREMENT 
 
 QuadRenderData is removed, please use MeshRenderData instead.
 
+### 9007
+
+Since v3.6, Because mask changes the inheritance relationship, you can directly manipulate the rendering components under the same node to complete the operation.
+
 ### 9100
 
 texture size exceeds current device limits %d/%d
@@ -3194,6 +3207,14 @@ GeometryRenderer: too many lines.
 
 GeometryRenderer: too many triangles.
 
+### 12010
+
+PassUtils: illegal uniform handle, accessing uniform at offset %d
+
+### 12011
+
+Pass: setUniform is invoked with incompatible uniform data type for binding %d, expected type is %s
+
 ### 12100
 
 The font size is too big to be fitted into texture atlas. Please switch to other label cache modes or choose a smaller font size.
@@ -3272,6 +3293,10 @@ The shadow visible distance is so small that CSM stratification is not effective
 
 The native folder may be generated from older versions, please refer https://docs.cocos.com/creator/manual/en/release-notes/ to upgrade.
 
+### 15100
+
+Camera '%s' clear flag is skybox, but skybox is disabled,  may cause strange background effect, please set camera clear flag to solid color.
+
 ### 16000
 
 '%s' is deprecated since v%s.
@@ -3287,3 +3312,15 @@ The native folder may be generated from older versions, please refer https://doc
 ### 16003
 
 '%s' is removed since v%s, please use '%s' instead.
+
+### 16101
+
+The effect('%s') you are looking for does not exist, please confirm the effect name in the editor. NOTE: Since 3.6, the name of the built-in effect has been changed to its name in the editor, please check it out. More information please refer to https://docs.cocos.com/creator/manual/en/shader/effect-inspector.html
+
+### 16201
+
+The asset replacing failed, can not found override asset('%s') for '%s' 
+
+### 16301
+
+node '%s' doesn't have any ModelRenderer component, this component will not work. please add ModelRenderer component first

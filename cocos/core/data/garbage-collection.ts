@@ -41,7 +41,7 @@ class GarbageCollectionManager {
                     if (property === targetSymbol) {
                         return target;
                     }
-                    let val = target[property];
+                    let val = Reflect.get(target, property);
                     if (typeof val === 'function' && property !== 'constructor') {
                         const original = val;
                         val = function newFunc () {
@@ -80,5 +80,8 @@ class GarbageCollectionManager {
     }
 }
 
+/**
+ * @engineInternal
+ */
 const garbageCollectionManager = new GarbageCollectionManager();
 export { garbageCollectionManager };

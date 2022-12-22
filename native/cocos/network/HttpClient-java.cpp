@@ -33,6 +33,7 @@
 #include <sstream>
 #include "application/ApplicationManager.h"
 #include "base/Log.h"
+#include "base/ThreadPool.h"
 #include "base/UTF8.h"
 #include "base/std/container/queue.h"
 #include "platform/FileUtils.h"
@@ -52,6 +53,7 @@ using HttpCookies = ccstd::vector<ccstd::string>;
 using HttpCookiesIter = HttpCookies::iterator;
 
 static HttpClient *gHttpClient = nullptr; // pointer to singleton
+static LegacyThreadPool *gThreadPool = nullptr;
 
 struct CookiesInfo {
     ccstd::string domain;
@@ -121,13 +123,21 @@ public:
         if (!headers.empty()) {
             /* append custom headers one by one */
             for (auto &header : headers) {
-                int len = header.length();
-                int pos = header.find(':');
-                if (-1 == pos || pos >= len) {
+                uint32_t len = header.length();
+                ccstd::string::size_type pos = header.find(':');
+                if (ccstd::string::npos == pos || pos >= len) {
                     continue;
                 }
                 ccstd::string str1 = header.substr(0, pos);
-                ccstd::string str2 = header.substr(pos + 1, len - pos - 1);
+                ccstd::string str2 = header.substr(pos + 1);
+                // trim \n at the end of the string
+                if (!str2.empty() && str2[str2.size() - 1] == '\n') {
+                    str2.erase(str2.size() - 1);
+                }
+                // trim leading space (header is field: value format)
+                if (!str2.empty() && str2[0] == ' ') {
+                    str2.erase(0, 1);
+                }
                 addRequestHeader(str1.c_str(), str2.c_str());
             }
         }
@@ -213,7 +223,7 @@ public:
                                            "sendRequest",
                                            "(Ljava/net/HttpURLConnection;[B)V")) {
             jbyteArray bytearray;
-            ssize_t dataSize = request->getRequestDataSize();
+            auto dataSize = static_cast<ssize_t>(request->getRequestDataSize());
             bytearray = methodInfo.env->NewByteArray(dataSize);
             methodInfo.env->SetByteArrayRegion(bytearray, 0, dataSize, reinterpret_cast<const jbyte *>(request->getRequestData()));
             methodInfo.env->CallStaticVoidMethod(
@@ -591,17 +601,17 @@ void HttpClient::processResponse(HttpResponse *response, char *responseMessage) 
         HttpRequest::Type::PUT != requestType &&
         HttpRequest::Type::HEAD != requestType &&
         HttpRequest::Type::DELETE != requestType) {
-        CC_ASSERT(false);
+        CC_ABORT();
         return;
     }
 
-    int64_t responseCode = -1;
+    long responseCode = -1L; // NOLINT
     int retValue = 0;
 
     HttpURLConnection urlConnection(this);
     if (!urlConnection.init(request)) {
         response->setSucceed(false);
-        response->setErrorBuffer("HttpURLConnetcion init failed");
+        response->setErrorBuffer("HttpURLConnection init failed");
         return;
     }
 
@@ -633,7 +643,7 @@ void HttpClient::processResponse(HttpResponse *response, char *responseMessage) 
     if (0 != suc) {
         response->setSucceed(false);
         response->setErrorBuffer("connect failed");
-        response->setResponseCode(static_cast<long>(responseCode));
+        response->setResponseCode(responseCode);
         return;
     }
 
@@ -683,7 +693,7 @@ void HttpClient::processResponse(HttpResponse *response, char *responseMessage) 
     urlConnection.disconnect();
 
     // write data to HttpResponse
-    response->setResponseCode(static_cast<long>(responseCode));
+    response->setResponseCode(responseCode);
 
     if (responseCode == -1) {
         response->setSucceed(false);
@@ -831,6 +841,10 @@ HttpClient::HttpClient()
   _cookie(nullptr),
   _requestSentinel(ccnew HttpRequest()) {
     CC_LOG_DEBUG("In the constructor of HttpClient!");
+    _requestSentinel->addRef();
+    if (gThreadPool == nullptr) {
+        gThreadPool = LegacyThreadPool::newFixedThreadPool(4);
+    }
     increaseThreadCount();
     _scheduler = CC_CURRENT_ENGINE()->getScheduler();
 }
@@ -882,8 +896,8 @@ void HttpClient::sendImmediate(HttpRequest *request) {
     // Create a HttpResponse object, the default setting is http access failed
     auto *response = ccnew HttpResponse(request);
     response->addRef(); // NOTE: RefCounted object's reference count is changed to 0 now. so needs to addRef after ccnew.
-    auto t = std::thread(&HttpClient::networkThreadAlone, this, request, response);
-    t.detach();
+
+    gThreadPool->pushTask([this, request, response](int /*tid*/) { HttpClient::networkThreadAlone(request, response); });
 }
 
 // Poll and notify main thread if responses exists in queue

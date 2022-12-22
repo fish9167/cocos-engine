@@ -26,6 +26,8 @@
 #pragma once
 
 #include "Define.h"
+#include "RenderStage.h"
+#include "base/RefCounted.h"
 
 namespace cc {
 namespace scene {
@@ -43,10 +45,10 @@ struct CC_DLL RenderFlowInfo {
     RenderStageList stages;
 };
 
-class CC_DLL RenderFlow {
+class CC_DLL RenderFlow : public RefCounted {
 public:
     RenderFlow();
-    virtual ~RenderFlow();
+    ~RenderFlow() override;
 
     virtual bool initialize(const RenderFlowInfo &info);
     virtual void activate(RenderPipeline *pipeline);
@@ -65,6 +67,7 @@ protected:
     RenderPipeline *_pipeline{nullptr};
     uint32_t _priority{0};
     uint32_t _tag{0};
+    bool _isResourceOwner{false};
 };
 
 } // namespace pipeline

@@ -23,15 +23,17 @@
  THE SOFTWARE.
 ****************************************************************************/
 
+#include "DebugUtils.h"
+#include "GslUtils.h"
 #include "LayoutGraphGraphs.h"
 #include "LayoutGraphNames.h"
+#include "LayoutGraphTypes.h"
 #include "NativePipelineGraphs.h"
+#include "Pmr.h"
+#include "Range.h"
 #include "RenderCommonNames.h"
-#include "cocos/renderer/pipeline/custom/DebugUtils.h"
-#include "cocos/renderer/pipeline/custom/GslUtils.h"
-#include "cocos/renderer/pipeline/custom/Pmr.h"
-#include "cocos/renderer/pipeline/custom/Range.h"
-#include "pipeline/custom/LayoutGraphTypes.h"
+#include "cocos/renderer/gfx-base/GFXDevice.h"
+
 
 namespace cc {
 
@@ -85,7 +87,7 @@ void NativeLayoutGraphBuilder::addDescriptorBlock(
     for (const auto &pairD : block.descriptors) {
         const auto &name = pairD.first;
         const auto &d = pairD.second;
-        auto iter = g.attributeIndex.find(boost::string_view(name));
+        auto iter = g.attributeIndex.find(std::string_view(name));
         if (iter == g.attributeIndex.end()) {
             auto attrID = gsl::narrow_cast<uint32_t>(g.valueNames.size());
             g.valueNames.emplace_back(name);
@@ -97,10 +99,29 @@ void NativeLayoutGraphBuilder::addDescriptorBlock(
             CC_ENSURES(added);
         }
         const auto &nameID = iter->second;
-        dstBlock.descriptors.emplace_back(nameID, d.count);
+        dstBlock.descriptors.emplace_back(nameID, gfx::Type::UNKNOWN, d.count);
     }
     // update layout
     layout.capacity += block.capacity;
+}
+
+void NativeLayoutGraphBuilder::addUniformBlock(uint32_t nodeID, const DescriptorBlockIndex &index, const ccstd::string &name, const gfx::UniformBlock &uniformBlock) {
+    auto &g = *data;
+    auto &ppl = get(LayoutGraphData::Layout, g, nodeID);
+    auto &layout = ppl.descriptorSets[index.updateFrequency].descriptorSetLayoutData;
+    auto iter = g.attributeIndex.find(std::string_view(name));
+    if (iter == g.attributeIndex.end()) {
+        auto attrID = gsl::narrow_cast<uint32_t>(g.valueNames.size());
+        g.valueNames.emplace_back(name);
+        bool added = false;
+        std::tie(iter, added) = g.attributeIndex.emplace(
+            std::piecewise_construct,
+            std::forward_as_tuple(name),
+            std::forward_as_tuple(NameLocalID{attrID}));
+        CC_ENSURES(added);
+    }
+    const auto &nameID = iter->second;
+    layout.uniformBlocks.emplace(nameID, uniformBlock);
 }
 
 namespace {
@@ -187,6 +208,10 @@ int NativeLayoutGraphBuilder::compile() {
         }
     }
 
+#ifdef _DEBUG
+    CC_LOG_DEBUG(print().c_str());
+#endif // _DEBUG
+
     return 0;
 }
 
@@ -248,6 +273,8 @@ ccstd::string NativeLayoutGraphBuilder::print() const {
         boost::container::pmr::get_default_resource());
     ccstd::pmr::string space(&pool);
 
+    oss << "\n";
+
     auto &g = *data;
     for (const auto v : makeRange(vertices(g))) {
         if (parent(v, g) != LayoutGraphData::null_vertex()) {
@@ -298,8 +325,9 @@ ccstd::string NativeLayoutGraphBuilder::print() const {
             }
             OSS << "}\n";
         }
+        INDENT_END();
+        OSS << "}\n";
     }
-
     return oss.str();
 }
 

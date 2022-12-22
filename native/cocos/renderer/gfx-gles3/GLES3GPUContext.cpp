@@ -297,9 +297,17 @@ void GLES3GPUContext::bindContext(bool bound) {
 void GLES3GPUContext::makeCurrent(const GLES3GPUSwapchain *drawSwapchain, const GLES3GPUSwapchain *readSwapchain) {
     EGLSurface drawSurface = drawSwapchain ? drawSwapchain->eglSurface : _eglCurrentDrawSurface;
     EGLSurface readSurface = readSwapchain ? readSwapchain->eglSurface : _eglCurrentReadSurface;
-    if (_eglCurrentDrawSurface == drawSurface && _eglCurrentReadSurface == readSurface) return;
+    EGLContext prevContext = eglGetCurrentContext();
+
+    if (_eglCurrentDrawSurface == drawSurface && _eglCurrentReadSurface == readSurface && _eglCurrentContext == prevContext) {
+        return;
+    }
 
     makeCurrent(drawSurface, readSurface, _eglCurrentContext);
+
+    if (prevContext != _eglCurrentContext) {
+        resetStates();
+    }
 }
 
 void GLES3GPUContext::present(const GLES3GPUSwapchain *swapchain) {
@@ -311,6 +319,12 @@ void GLES3GPUContext::present(const GLES3GPUSwapchain *swapchain) {
         }
     }
 #endif
+    // For an example, 2 windows changed to background will cause the eglSurface of both destroyed,
+    // and then make one of them foreground, and the other window's eglSurface will stays EGL_NO_SURFACE.
+    // But in GLES3Device::present it iterates all swapchains, and now the second window containing the invalid surface exists.
+    if (swapchain->eglSurface == EGL_NO_SURFACE) {
+        return;
+    }
     if (_eglCurrentInterval != swapchain->eglSwapInterval) {
         if (!eglSwapInterval(eglDisplay, swapchain->eglSwapInterval)) {
             CC_LOG_ERROR("eglSwapInterval() - FAILED.");
@@ -318,6 +332,7 @@ void GLES3GPUContext::present(const GLES3GPUSwapchain *swapchain) {
 
         _eglCurrentInterval = swapchain->eglSwapInterval;
     }
+    makeCurrent(swapchain, swapchain);
     EGL_CHECK(eglSwapBuffers(eglDisplay, swapchain->eglSurface));
 }
 

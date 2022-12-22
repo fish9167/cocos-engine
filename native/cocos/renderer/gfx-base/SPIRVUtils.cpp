@@ -45,7 +45,7 @@ EShLanguage getShaderStage(ShaderStageFlagBit type) {
         case ShaderStageFlagBit::FRAGMENT: return EShLangFragment;
         case ShaderStageFlagBit::COMPUTE: return EShLangCompute;
         default: {
-            CC_ASSERT(false);
+            CC_ABORT();
             return EShLangVertex;
         }
     }
@@ -59,10 +59,15 @@ glslang::EShTargetClientVersion getClientVersion(int vulkanMinorVersion) {
         case 1: return glslang::EShTargetVulkan_1_1;
         case 2: return glslang::EShTargetVulkan_1_2;
 #if GLSLANG_VERSION_LESS_OR_EQUAL_TO(11, 10, 0)
+            // This macro is defined in glslang/build_info.h. This expression means that the
+            // lib version is greater than or equal to 11.10.0 (not less than or equal to),
+            // which is very counterintuitive. But it's the only way to do it.
         case 3: return glslang::EShTargetVulkan_1_3;
+#else
+        case 3: return glslang::EShTargetVulkan_1_2;
 #endif
         default: {
-            CC_ASSERT(false);
+            CC_ABORT();
             return glslang::EShTargetVulkan_1_0;
         }
     }
@@ -74,10 +79,15 @@ glslang::EShTargetLanguageVersion getTargetVersion(int vulkanMinorVersion) {
         case 1: return glslang::EShTargetSpv_1_3;
         case 2: return glslang::EShTargetSpv_1_5;
 #if GLSLANG_VERSION_LESS_OR_EQUAL_TO(11, 10, 0)
+            // This macro is defined in glslang/build_info.h. This expression means that the
+            // lib version is greater than or equal to 11.10.0 (not less than or equal to),
+            // which is very counterintuitive. But it's the only way to do it.
         case 3: return glslang::EShTargetSpv_1_6;
+#else
+        case 3: return glslang::EShTargetSpv_1_5;
 #endif
         default: {
-            CC_ASSERT(false);
+            CC_ABORT();
             return glslang::EShTargetSpv_1_0;
         }
     }
@@ -164,23 +174,23 @@ void SPIRVUtils::compressInputLocations(gfx::AttributeList &attributes) {
 
         switch (opcode) {
             case SpvOpDecorate: {
-                CC_ASSERT(wordCount >= 3);
+                CC_ASSERT_GE(wordCount, 3);
 
                 uint32_t id = insn[1];
-                CC_ASSERT(id < idBound);
+                CC_ASSERT_LT(id, idBound);
 
                 switch (insn[2]) {
                     case SpvDecorationLocation:
-                        CC_ASSERT(wordCount == 4);
+                        CC_ASSERT_EQ(wordCount, 4);
                         ids[id].pLocation = &insn[3];
                         break;
                 }
             } break;
             case SpvOpVariable: {
-                CC_ASSERT(wordCount >= 4);
+                CC_ASSERT_GE(wordCount, 4);
 
                 uint32_t id = insn[2];
-                CC_ASSERT(id < idBound);
+                CC_ASSERT_LT(id, idBound);
 
                 CC_ASSERT(ids[id].opcode == 0);
                 ids[id].opcode = opcode;

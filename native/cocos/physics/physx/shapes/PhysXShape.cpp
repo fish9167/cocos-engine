@@ -36,10 +36,6 @@ PhysXShape::PhysXShape() : _mCenter(physx::PxIdentity), _mRotation(physx::PxIden
     _mObjectID = PhysXWorld::getInstance().addWrapperObject(reinterpret_cast<uintptr_t>(this));
 };
 
-PhysXShape::~PhysXShape() {
-    PhysXWorld::getInstance().removeWrapperObject(_mObjectID);
-}
-
 void PhysXShape::initialize(Node *node) {
     PhysXWorld &ins = PhysXWorld::getInstance();
     _mSharedBody = ins.getSharedBody(node);
@@ -63,6 +59,7 @@ void PhysXShape::onDisable() {
 void PhysXShape::onDestroy() {
     getSharedBody().reference(false);
     eraseFromShapeMap();
+    PhysXWorld::getInstance().removeWrapperObject(_mObjectID);
 }
 
 void PhysXShape::setMaterial(uint16_t id, float f, float df, float r,
@@ -112,19 +109,25 @@ void PhysXShape::updateEventListener(EShapeFilterFlag flag) {
 }
 
 geometry::AABB &PhysXShape::getAABB() {
-    static geometry::AABB aabb;
+    static IntrusivePtr<geometry::AABB> aabb; // this variable is shared with JS with refcounter
+    if (!aabb) {
+        aabb = new geometry::AABB;
+    }
     if (_mShape) {
         auto bounds = physx::PxShapeExt::getWorldBounds(getShape(), *getSharedBody().getImpl().rigidActor);
-        pxSetVec3Ext(aabb.center, (bounds.maximum + bounds.minimum) / 2);
-        pxSetVec3Ext(aabb.halfExtents, (bounds.maximum - bounds.minimum) / 2);
+        pxSetVec3Ext(aabb->center, (bounds.maximum + bounds.minimum) / 2);
+        pxSetVec3Ext(aabb->halfExtents, (bounds.maximum - bounds.minimum) / 2);
     }
-    return aabb;
+    return *aabb;
 }
 
 geometry::Sphere &PhysXShape::getBoundingSphere() {
-    static geometry::Sphere sphere;
-    if (_mShape) sphere.define(getAABB());
-    return sphere;
+    static IntrusivePtr<geometry::Sphere> sphere; // this variable is shared with JS with refcounter
+    if (!sphere) {
+        sphere = new geometry::Sphere;
+    }
+    if (_mShape) sphere->define(getAABB());
+    return *sphere;
 }
 
 void PhysXShape::updateFilterData(const physx::PxFilterData &data) {
@@ -137,7 +140,6 @@ void PhysXShape::updateCenter() {
     node->updateWorldTransform();
     physx::PxTransform local{_mCenter * node->getWorldScale(), _mRotation};
     getShape().setLocalPose(local);
-    if (_mEnabled && !isTrigger()) sb.updateCenterOfMass();
 }
 
 void PhysXShape::insertToShapeMap() {

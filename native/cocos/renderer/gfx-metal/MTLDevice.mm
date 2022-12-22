@@ -23,12 +23,12 @@
  THE SOFTWARE.
 ****************************************************************************/
 
+#import "MTLDevice.h"
 #import "MTLBuffer.h"
 #import "MTLCommandBuffer.h"
 #import "MTLConfig.h"
 #import "MTLDescriptorSet.h"
 #import "MTLDescriptorSetLayout.h"
-#import "MTLDevice.h"
 #import "MTLFramebuffer.h"
 #import "MTLGPUObjects.h"
 #import "MTLInputAssembler.h"
@@ -42,10 +42,9 @@
 #import "MTLShader.h"
 #import "MTLSwapchain.h"
 #import "MTLTexture.h"
-#import "cocos/bindings/event/CustomEventTypes.h"
-#import "cocos/bindings/event/EventDispatcher.h"
-#import "profiler/Profiler.h"
 #import "base/Log.h"
+#import "profiler/Profiler.h"
+
 
 namespace cc {
 namespace gfx {
@@ -74,13 +73,21 @@ CCMTLDevice::~CCMTLDevice() {
 
 bool CCMTLDevice::doInit(const DeviceInfo &info) {
     _gpuDeviceObj = ccnew CCMTLGPUDeviceObject;
-    _inFlightSemaphore = ccnew CCMTLSemaphore(MAX_FRAMES_IN_FLIGHT);
+    _inFlightSemaphore = ccnew CCMTLSemaphore(3);
     _currentFrameIndex = 0;
 
     id<MTLDevice> mtlDevice = MTLCreateSystemDefaultDevice();
     _mtlDevice = mtlDevice;
 
+    NSString *deviceName = [mtlDevice name];
+    _renderer = [deviceName UTF8String];
+    NSArray* nameArr = [deviceName componentsSeparatedByString:@" "];
+    if ([nameArr count] > 0) {
+        _vendor = [nameArr[0] UTF8String];
+    }
     _mtlFeatureSet = mu::highestSupportedFeatureSet(mtlDevice);
+    _version = std::to_string(_mtlFeatureSet);
+    
     const auto gpuFamily = mu::getGPUFamily(MTLFeatureSet(_mtlFeatureSet));
     _indirectDrawSupported = mu::isIndirectDrawSupported(gpuFamily);
     _caps.maxVertexAttributes = mu::getMaxVertexAttributes(gpuFamily);
@@ -91,7 +98,9 @@ bool CCMTLDevice::doInit(const DeviceInfo &info) {
     _caps.maxColorRenderTargets = mu::getMaxColorRenderTarget(gpuFamily);
     _caps.uboOffsetAlignment = mu::getMinBufferOffsetAlignment(gpuFamily);
     _caps.maxComputeWorkGroupInvocations = mu::getMaxThreadsPerGroup(gpuFamily);
-    _caps.maxVertexUniformVectors = 255; //no explicit limit on vertex stage.
+    _caps.maxFragmentUniformVectors = 256;
+    _caps.maxVertexUniformVectors = 256;
+    _caps.maxUniformBufferBindings = mu::getMaxUniformBufferBindings(gpuFamily);
     _maxBufferBindingIndex = mu::getMaxEntriesInBufferArgumentTable(gpuFamily);
     _icbSuppored = mu::isIndirectCommandBufferSupported(MTLFeatureSet(_mtlFeatureSet));
     _isSamplerDescriptorCompareFunctionSupported = mu::isSamplerDescriptorCompareFunctionSupported(gpuFamily);
@@ -139,8 +148,6 @@ bool CCMTLDevice::doInit(const DeviceInfo &info) {
     cmdBuffInfo.queue = _queue;
     _cmdBuff = createCommandBuffer(cmdBuffInfo);
 
-    //    _memoryAlarmListenerId = EventDispatcher::addCustomEventListener(EVENT_MEMORY_WARNING, std::bind(&CCMTLDevice::onMemoryWarning, this));
-
     CCMTLGPUGarbageCollectionPool::getInstance()->initialize(std::bind(&CCMTLDevice::currentFrameIndex, this));
 
     CC_LOG_INFO("Metal Feature Set: %s", mu::featureSetToString(MTLFeatureSet(_mtlFeatureSet)).c_str());
@@ -149,10 +156,6 @@ bool CCMTLDevice::doInit(const DeviceInfo &info) {
 }
 
 void CCMTLDevice::doDestroy() {
-    //    if (_memoryAlarmListenerId != 0) {
-    //        EventDispatcher::removeCustomEventListener(EVENT_MEMORY_WARNING, _memoryAlarmListenerId);
-    //        _memoryAlarmListenerId = 0;
-    //    }
 
     CC_SAFE_DELETE(_gpuDeviceObj);
 
@@ -161,13 +164,12 @@ void CCMTLDevice::doDestroy() {
     CC_SAFE_DESTROY_AND_DELETE(_cmdBuff);
 
     CCMTLGPUGarbageCollectionPool::getInstance()->flush();
-
-    if (_inFlightSemaphore) {
-        // has present ? syncSuccess : no need to wait;
+    
+    if(_inFlightSemaphore) {
         _inFlightSemaphore->trySyncAll(1000);
-    }
-
-    CC_SAFE_DELETE(_inFlightSemaphore);
+        CC_SAFE_DELETE(_inFlightSemaphore);
+        _inFlightSemaphore = nullptr;
+    }    
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         CC_SAFE_DELETE(_gpuStagingBufferPools[i]);
@@ -207,6 +209,7 @@ void CCMTLDevice::present() {
     _numTriangles = queue->gpuQueueObj()->numTriangles;
 
     //hold this pointer before update _currentFrameIndex
+    auto tempIndex = _currentFrameIndex;
     _currentBufferPoolId = _currentFrameIndex;
     _currentFrameIndex = (_currentFrameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 
@@ -229,18 +232,18 @@ void CCMTLDevice::present() {
             [drawable release];
         }
         [cmdBuffer addCompletedHandler:^(id<MTLCommandBuffer> commandBuffer) {
-            onPresentCompleted();
+            onPresentCompleted(tempIndex);
         }];
         [cmdBuffer commit];
     }
 }
 
-void CCMTLDevice::onPresentCompleted() {
-    if (_currentBufferPoolId >= 0 && _currentBufferPoolId < MAX_FRAMES_IN_FLIGHT) {
-        CCMTLGPUStagingBufferPool *bufferPool = _gpuStagingBufferPools[_currentBufferPoolId];
+void CCMTLDevice::onPresentCompleted(uint32_t index) {
+    if (index >= 0 && index < MAX_FRAMES_IN_FLIGHT) {
+        CCMTLGPUStagingBufferPool *bufferPool = _gpuStagingBufferPools[index];
         if (bufferPool) {
             bufferPool->reset();
-            CCMTLGPUGarbageCollectionPool::getInstance()->clear(_currentBufferPoolId);
+            CCMTLGPUGarbageCollectionPool::getInstance()->clear(index);
         }
     }
     _inFlightSemaphore->signal();
@@ -389,7 +392,7 @@ void CCMTLDevice::initFormatFeatures(uint32_t gpuFamily) {
     }
 
     tempFeature = FormatFeature::RENDER_TARGET | FormatFeature::SAMPLED_TEXTURE | FormatFeature::LINEAR_FILTER | FormatFeature::STORAGE_TEXTURE;
-
+    _formatFeatures[toNumber(Format::BGRA8)] = tempFeature;
     _formatFeatures[toNumber(Format::R8SN)] = tempFeature;
     _formatFeatures[toNumber(Format::RG8SN)] = tempFeature;
     _formatFeatures[toNumber(Format::RGBA8SN)] = tempFeature;

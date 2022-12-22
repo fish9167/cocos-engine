@@ -26,6 +26,7 @@
 #pragma once
 
 #include "Define.h"
+#include "RenderFlow.h"
 #include "base/std/container/string.h"
 #include "base/std/container/unordered_map.h"
 #include "core/assets/Asset.h"
@@ -44,6 +45,9 @@ namespace scene {
 class Camera;
 class SubModel;
 } // namespace scene
+namespace render {
+class PipelineRuntime;
+} // namespace render
 namespace pipeline {
 
 class PipelineUBO;
@@ -135,6 +139,14 @@ public:
 #endif
     }
 
+    inline void resetRenderQueue(bool reset) { _resetRenderQueue = reset; }
+    inline bool isRenderQueueReset() const { return _resetRenderQueue; }
+
+    render::PipelineRuntime* getPipelineRuntime() const { return _pipelineRuntime; }
+    void setPipelineRuntime(render::PipelineRuntime* pipelineRuntime) {
+        _pipelineRuntime = pipelineRuntime;
+    }
+
 protected:
     static RenderPipeline *instance;
 
@@ -187,6 +199,10 @@ protected:
     bool _clusterEnabled{false};
     bool _bloomEnabled{false};
     bool _occlusionQueryEnabled{false};
+
+    bool _resetRenderQueue{true};
+
+    render::PipelineRuntime* _pipelineRuntime{nullptr};
 };
 
 } // namespace pipeline

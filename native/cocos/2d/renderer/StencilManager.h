@@ -35,7 +35,7 @@
 
 namespace cc {
 class RenderEntity;
-enum class StencilStage {
+enum class StencilStage : uint8_t {
     // Stencil disabled
     DISABLED = 0,
     // Clear stencil buffer
@@ -83,7 +83,7 @@ public:
         ++_maskStackSize;
     }
 
-    void clear(RenderEntity* entity);
+    StencilStage clear(RenderEntity* entity);
     void enterLevel(RenderEntity* entity);
 
     inline void enableMask() {

@@ -50,18 +50,22 @@ void InstancedBuffer::destroy() {
     _instances.clear();
 }
 
-void InstancedBuffer::merge(const scene::Model *model, const scene::SubModel *subModel, uint32_t passIdx) {
-    merge(model, subModel, passIdx, nullptr);
+void InstancedBuffer::merge(scene::SubModel *subModel, uint32_t passIdx) {
+    merge(subModel, passIdx, nullptr);
 }
 
-void InstancedBuffer::merge(const scene::Model *model, const scene::SubModel *subModel, uint32_t passIdx, gfx::Shader *shaderImplant) {
-    auto stride = model->getInstancedBufferSize();
-    const auto *instancedBuffer = model->getInstancedBuffer();
+void InstancedBuffer::merge(scene::SubModel *subModel, uint32_t passIdx, gfx::Shader *shaderImplant) {
+    auto &attrs = subModel->getInstancedAttributeBlock();
 
+    const auto stride = attrs.buffer.length();
     if (!stride) return; // we assume per-instance attributes are always present
+
     auto *sourceIA = subModel->getInputAssembler();
     auto *descriptorSet = subModel->getDescriptorSet();
     auto *lightingMap = descriptorSet->getTexture(LIGHTMAPTEXTURE::BINDING);
+    auto *reflectionProbeCubemap = descriptorSet->getTexture(REFLECTIONPROBECUBEMAP::BINDING);
+    auto *reflectionProbePlanarMap = descriptorSet->getTexture(REFLECTIONPROBEPLANARMAP::BINDING);
+    uint32_t reflectionProbeType = subModel->getReflectionProbeType();
     auto *shader = shaderImplant;
     if (!shader) {
         shader = subModel->getShader(passIdx);
@@ -74,6 +78,16 @@ void InstancedBuffer::merge(const scene::Model *model, const scene::SubModel *su
 
         // check same binding
         if (instance.lightingMap != lightingMap) {
+            continue;
+        }
+
+        if (instance.reflectionProbeType != reflectionProbeType) {
+            continue;
+        }
+        if (instance.reflectionProbeCubemap != reflectionProbeCubemap) {
+            continue;
+        }
+        if (instance.reflectionProbePlanarMap != reflectionProbePlanarMap) {
             continue;
         }
 
@@ -92,13 +106,13 @@ void InstancedBuffer::merge(const scene::Model *model, const scene::SubModel *su
         if (instance.descriptorSet != descriptorSet) {
             instance.descriptorSet = descriptorSet;
         }
-        memcpy(instance.data + instance.stride * instance.count++, instancedBuffer, stride);
+        memcpy(instance.data + instance.stride * instance.count++, attrs.buffer.buffer()->getData(), stride);
         _hasPendingModels = true;
         return;
     }
 
     // Create a new instance
-    auto newSize = stride * INITIAL_CAPACITY;
+    const auto newSize = stride * INITIAL_CAPACITY;
     auto *vb = _device->createBuffer({
         gfx::BufferUsageBit::VERTEX | gfx::BufferUsageBit::TRANSFER_DST,
         gfx::MemoryUsageBit::DEVICE,
@@ -106,13 +120,11 @@ void InstancedBuffer::merge(const scene::Model *model, const scene::SubModel *su
         static_cast<uint32_t>(stride),
     });
 
-    const auto &instancedAttributes = model->getInstanceAttributes();
     auto vertexBuffers = sourceIA->getVertexBuffers();
     auto attributes = sourceIA->getAttributes();
     auto *indexBuffer = sourceIA->getIndexBuffer();
 
-    attributes.reserve(instancedAttributes.size());
-    for (const auto &attribute : instancedAttributes) {
+    for (const auto &attribute : attrs.attributes) {
         attributes.emplace_back(gfx::Attribute{
             attribute.name,
             attribute.format,
@@ -123,17 +135,18 @@ void InstancedBuffer::merge(const scene::Model *model, const scene::SubModel *su
     }
 
     auto *data = static_cast<uint8_t *>(CC_MALLOC(newSize));
-    memcpy(data, instancedBuffer, stride);
+    memcpy(data, attrs.buffer.buffer()->getData(), stride);
     vertexBuffers.emplace_back(vb);
-    gfx::InputAssemblerInfo iaInfo = {attributes, vertexBuffers, indexBuffer};
+    const gfx::InputAssemblerInfo iaInfo = {attributes, vertexBuffers, indexBuffer};
     auto *ia = _device->createInputAssembler(iaInfo);
-    InstancedItem item = {1, INITIAL_CAPACITY, vb, data, ia, stride, shader, descriptorSet, lightingMap};
+    InstancedItem item = {1, INITIAL_CAPACITY, vb, data, ia, stride, shader, descriptorSet,
+                          lightingMap, reflectionProbeCubemap, reflectionProbePlanarMap, reflectionProbeType};
     _instances.emplace_back(item);
     _hasPendingModels = true;
 }
 
-void InstancedBuffer::uploadBuffers(gfx::CommandBuffer *cmdBuff) {
-    for (auto &instance : _instances) {
+void InstancedBuffer::uploadBuffers(gfx::CommandBuffer *cmdBuff) const {
+    for (const auto &instance : _instances) {
         if (!instance.count) continue;
 
         cmdBuff->updateBuffer(instance.vb, instance.data, instance.vb->getSize());
@@ -149,7 +162,7 @@ void InstancedBuffer::clear() {
 }
 
 void InstancedBuffer::setDynamicOffset(uint32_t idx, uint32_t value) {
-    if (_dynamicOffsets.size() <= idx) _dynamicOffsets.resize(idx + 1);
+    if (_dynamicOffsets.size() <= idx) _dynamicOffsets.resize(1 + idx);
     _dynamicOffsets[idx] = value;
 }
 } // namespace pipeline

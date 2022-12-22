@@ -24,14 +24,11 @@
 */
 
 import { JSB } from 'internal:constants';
-import { Device, Attribute } from '../../core/gfx';
+import { Device, Attribute } from '../../gfx';
 import { MeshBuffer } from './mesh-buffer';
 import { BufferAccessor } from './buffer-accessor';
-import { assertID, errorID } from '../../core/platform/debug';
-import { assertIsTrue } from '../../core/data/utils/asserts';
-import { Pool } from '../../core/memop/pool';
-import { macro } from '../../core/platform/macro';
-import { director } from '../../core';
+import { assertID, errorID, Pool, macro, assertIsTrue } from '../../core';
+import { director } from '../../game';
 
 interface IFreeEntry {
     offset: number;
@@ -147,6 +144,14 @@ export class StaticVBAccessor extends BufferAccessor {
         const buf = this._buffers[bufferId];
         const iCount = indices.length;
         if (iCount) {
+            //make sure iData length enough
+            const needLength = buf.indexOffset + indices.length;
+            if (buf.iData.length < needLength) {
+                const expansionLength = Math.floor(1.25 * needLength);
+                const newIData = new Uint16Array(expansionLength);
+                newIData.set(buf.iData);
+                buf.iData = newIData;
+            }
             // Append index buffer
             buf.iData.set(indices, buf.indexOffset);
             buf.indexOffset += indices.length;
@@ -305,7 +310,7 @@ export class StaticVBAccessor extends BufferAccessor {
 
         return this._buffers.length - 1;
     }
-    static generateID () : number {
+    static generateID (): number {
         return StaticVBAccessor.ID_COUNT++;
     }
 }

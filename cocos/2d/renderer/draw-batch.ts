@@ -23,17 +23,13 @@
  THE SOFTWARE.
  */
 
-import { JSB } from 'internal:constants';
-import { MeshBuffer } from './mesh-buffer';
-import { Material } from '../../core/assets/material';
-import { Texture, Sampler, InputAssembler, DescriptorSet, Shader } from '../../core/gfx';
-import { Node } from '../../core/scene-graph';
-import { Camera } from '../../core/renderer/scene/camera';
-import { RenderScene } from '../../core/renderer/core/render-scene';
-import { Model } from '../../core/renderer/scene/model';
-import { Layers } from '../../core/scene-graph/layers';
-import { legacyCC } from '../../core/global-exports';
-import { Pass } from '../../core/renderer/core/pass';
+import { Material } from '../../asset/assets/material';
+import { Texture, Sampler, InputAssembler, DescriptorSet, Shader } from '../../gfx';
+import { Node } from '../../scene-graph';
+import { Model } from '../../render-scene/scene/model';
+import { Layers } from '../../scene-graph/layers';
+import { cclegacy } from '../../core';
+import { Pass } from '../../render-scene/core/pass';
 import { IBatcher } from './i-batcher';
 
 const UI_VIS_FLAG = Layers.Enum.NONE | Layers.Enum.UI_3D;
@@ -107,19 +103,19 @@ export class DrawBatch2D {
     }
 
     // object version
-    public fillPasses (mat: Material | null, dss, dssHash, bs, bsHash, patches, batcher: IBatcher) {
+    public fillPasses (mat: Material | null, dss, dssHash, patches) {
         if (mat) {
             const passes = mat.passes;
             if (!passes) { return; }
 
-            let hashFactor = 0;
+            const hashFactor = 0;
             let dirty = false;
 
             this._shaders.length = passes.length;
 
             for (let i = 0; i < passes.length; i++) {
                 if (!this._passes[i]) {
-                    this._passes[i] = new Pass(legacyCC.director.root);
+                    this._passes[i] = new Pass(cclegacy.director.root);
                 }
                 const mtlPass = passes[i];
                 const passInUse = this._passes[i];
@@ -127,21 +123,10 @@ export class DrawBatch2D {
                 mtlPass.update();
 
                 // Hack: Cause pass.hash can not check all pass value
-
                 if (!dss) { dss = mtlPass.depthStencilState; dssHash = 0; }
-                if (!bs) { bs = mtlPass.blendState; bsHash = 0; }
-                if (bsHash === -1) { bsHash = 0; }
 
-                hashFactor = (dssHash << 16) | bsHash;
-                if (JSB) {
-                    const nativeDSS = dss._nativeObj ? dss._nativeObj : dss;
-                    const nativeBS = bs._nativeObj ? bs._nativeObj : bs;
-                    // @ts-expect-error hack for UI use pass object
-                    passInUse._initPassFromTarget(mtlPass, nativeDSS, nativeBS, hashFactor);
-                } else {
-                    // @ts-expect-error hack for UI use pass object
-                    passInUse._initPassFromTarget(mtlPass, dss, bs, hashFactor);
-                }
+                // @ts-expect-error hack for UI use pass object
+                passInUse._initPassFromTarget(mtlPass, dss, dssHash);
 
                 this._shaders[i] = passInUse.getShaderVariant(patches)!;
 

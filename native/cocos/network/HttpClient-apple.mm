@@ -36,12 +36,14 @@
 #include "application/ApplicationManager.h"
 #include "base/Scheduler.h"
 #include "base/memory/Memory.h"
+#include "base/ThreadPool.h"
 
 namespace cc {
 
 namespace network {
 
 static HttpClient *_httpClient = nullptr; // pointer to singleton
+static LegacyThreadPool *gThreadPool = nullptr;
 
 static int processTask(HttpClient *client, HttpRequest *request, NSString *requestType, void *stream, long *errorCode, void *headerStream, char *errorBuffer);
 
@@ -147,7 +149,15 @@ static int processTask(HttpClient *client, HttpRequest *request, NSString *reque
             unsigned long i = header.find(':', 0);
             unsigned long length = header.size();
             ccstd::string field = header.substr(0, i);
-            ccstd::string value = header.substr(i + 1, length - i);
+            ccstd::string value = header.substr(i + 1);
+            // trim \n at the end of the string
+            if (!value.empty() && value[value.size() - 1] == '\n') {
+                value.erase(value.size() - 1);
+            }
+            // trim leading space (header is field: value format)
+            if (!value.empty() && value[0] == ' ') {
+                value.erase(0, 1);
+            }
             NSString *headerField = [NSString stringWithUTF8String:field.c_str()];
             NSString *headerValue = [NSString stringWithUTF8String:value.c_str()];
             [nsrequest setValue:headerValue forHTTPHeaderField:headerField];
@@ -336,6 +346,9 @@ HttpClient::HttpClient()
   _threadCount(0),
   _cookie(nullptr) {
     CC_LOG_DEBUG("In the constructor of HttpClient!");
+    if (gThreadPool == nullptr) {
+        gThreadPool = LegacyThreadPool::newFixedThreadPool(4);
+    }
     _requestSentinel = ccnew HttpRequest();
     _requestSentinel->addRef();
     memset(_responseMessage, 0, sizeof(char) * RESPONSE_BUFFER_SIZE);
@@ -395,8 +408,7 @@ void HttpClient::sendImmediate(HttpRequest *request) {
     HttpResponse *response = ccnew HttpResponse(request);
     response->addRef(); // NOTE: RefCounted object's reference count is changed to 0 now. so needs to addRef after ccnew.
 
-    auto t = std::thread(&HttpClient::networkThreadAlone, this, request, response);
-    t.detach();
+    gThreadPool->pushTask([this, request, response](int /*tid*/) { HttpClient::networkThreadAlone(request, response); });
 }
 
 // Poll and notify main thread if responses exists in queue
@@ -455,7 +467,7 @@ void HttpClient::processResponse(HttpResponse *response, char *responseMessage) 
             break;
 
         default:
-            CC_ASSERT(false);
+            CC_ABORT();
             break;
     }
 

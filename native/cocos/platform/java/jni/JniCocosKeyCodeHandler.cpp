@@ -32,8 +32,9 @@
 #endif
 
 #include <jni.h>
-#include "cocos/bindings/event/EventDispatcher.h"
+#include "engine/EngineEvents.h"
 #include "platform/java/jni/glue/JniNativeGlue.h"
+#include "platform/java/modules/SystemWindow.h"
 
 namespace {
 struct cc::KeyboardEvent keyboardEvent;
@@ -53,14 +54,15 @@ ccstd::unordered_map<int, int> keyCodeMap = {
 ccstd::unordered_map<int, int> keyCodeMap = {};
 #endif
 //NOLINTNEXTLINE
-void dispatchKeyCodeEvent(int keyCode, cc::KeyboardEvent &event) {
+static void dispatchKeyCodeEvent(int keyCode, cc::KeyboardEvent &event) {
     if (keyCodeMap.count(keyCode) > 0) {
         keyCode = keyCodeMap[keyCode];
     } else {
         keyCode = 0;
     }
+    event.windowId = cc::ISystemWindow::mainWindowId;
     event.key = keyCode;
-    JNI_NATIVE_GLUE()->dispatchEvent(event);
+    cc::events::Keyboard::broadcast(event);
 }
 } // namespace
 

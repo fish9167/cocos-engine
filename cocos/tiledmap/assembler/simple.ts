@@ -29,11 +29,13 @@ import { IAssembler } from '../../2d/renderer/base';
 import { IBatcher } from '../../2d/renderer/i-batcher';
 import { TiledLayer, TiledRenderData, TiledTile } from '..';
 import { GID, MixedGID, RenderOrder, TiledGrid, TileFlag } from '../tiled-types';
-import { Texture2D, Node, director, Director } from '../../core';
+import { director, Director } from '../../game';
 import { StaticVBAccessor } from '../../2d/renderer/static-vb-accessor';
 import { vfmtPosUvColor } from '../../2d/renderer/vertex-format';
 import { RenderData } from '../../2d/renderer/render-data';
 import { RenderDrawInfoType } from '../../2d/renderer/render-draw-info';
+import { Texture2D } from '../../asset/assets';
+import { Node } from '../../scene-graph';
 
 const MaxGridsLimit = Math.ceil(65535 / 6);
 
@@ -308,7 +310,7 @@ function packRenderData () {
     const tiledData = _curLayer.requestTiledRenderData();
     if (JSB) {
         tiledData.renderData = RenderData.add(vfmtPosUvColor, _accessor);
-        tiledData.renderData.drawInfoType = RenderDrawInfoType.IA;
+        tiledData.renderData.drawInfoType = RenderDrawInfoType.MIDDLEWARE;
     } else {
         tiledData.renderData = RenderData.add(vfmtPosUvColor);
     }
@@ -408,7 +410,7 @@ function traverseGrids (leftDown: { col: number, row: number }, rightTop: { col:
                 const nodes = comp.requestSubNodesData();
                 const celData = comp.getNodesByRowCol(row, col);
                 if (celData && celData.count > 0) {
-                    (nodes as any).subNodes = comp.getNodesByRowCol(row, col)!.list as any;
+                    (nodes as any).subNodes = celData.list as any;
                 }
             }
 

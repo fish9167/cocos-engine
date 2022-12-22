@@ -64,6 +64,7 @@ void ShadowStage::activate(RenderPipeline *pipeline, RenderFlow *flow) {
     RenderStage::activate(pipeline, flow);
 
     _additiveShadowQueue = ccnew ShadowMapBatchedQueue(pipeline);
+    _isShadowMapCleared = false;
 }
 
 void ShadowStage::render(scene::Camera *camera) {
@@ -93,7 +94,7 @@ void ShadowStage::render(scene::Camera *camera) {
     switch (_light->getType()) {
         case scene::LightType::DIRECTIONAL: {
             const auto *mainLight = static_cast<const scene::DirectionalLight *>(_light);
-            if (mainLight->isShadowFixedArea() || mainLight->getCSMLevel() == scene::CSMLevel::LEVEL_1) {
+            if (mainLight->isShadowFixedArea() || mainLight->getCSMLevel() == scene::CSMLevel::LEVEL_1 || !sceneData->getCSMSupported()) {
                 _renderArea.x = 0;
                 _renderArea.y = 0;
                 _renderArea.width = static_cast<uint32_t>(shadowMapSize.x);
@@ -119,11 +120,6 @@ void ShadowStage::render(scene::Camera *camera) {
             _renderArea.height = static_cast<uint32_t>(shadowMapSize.y);
             break;
         }
-        case scene::LightType::SPHERE: {
-            break;
-        }
-        case scene::LightType::UNKNOWN:
-            break;
         default:
             break;
     }
@@ -139,6 +135,7 @@ void ShadowStage::render(scene::Camera *camera) {
     _additiveShadowQueue->recordCommandBuffer(_device, renderPass, cmdBuffer);
 
     cmdBuffer->endRenderPass();
+    _isShadowMapCleared = false;
 }
 
 void ShadowStage::destroy() {
@@ -152,7 +149,7 @@ void ShadowStage::destroy() {
 }
 
 void ShadowStage::clearFramebuffer(const scene::Camera *camera) {
-    if (!_light || !_framebuffer) {
+    if (!_light || !_framebuffer || _isShadowMapCleared) {
         return;
     }
 
@@ -175,6 +172,7 @@ void ShadowStage::clearFramebuffer(const scene::Camera *camera) {
                                _clearColors, camera->getClearDepth(), camera->getClearStencil());
 
     cmdBuffer->endRenderPass();
+    _isShadowMapCleared = true;
 }
 
 } // namespace pipeline

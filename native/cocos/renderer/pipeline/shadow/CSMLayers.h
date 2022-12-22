@@ -74,7 +74,9 @@ public:
     void calculateSplitFrustum(float start, float end, float aspect, float fov, const Mat4 &transform);
 
 private:
-    RenderObjectList _shadowObjects;
+    // global set
+    static float _maxLayerPosz;
+    static float _maxLayerFarPlane;
 
     // Level is a vector, Indicates the location.range: [0 ~ 3]
     uint32_t _level{1U};
@@ -91,9 +93,7 @@ private:
     geometry::Frustum _lightViewFrustum;
     geometry::AABB _castLightViewBoundingBox;
 
-    // local set
-    float _maxLayerPosz{0.0F};
-    float _maxLayerFarPlane{0.0F};
+    RenderObjectList _shadowObjects;
 };
 
 class CSMLayerInfo : public ShadowTransformInfo {
@@ -107,11 +107,7 @@ public:
     inline float getSplitCameraFar() const { return _splitCameraFar; }
     inline void setSplitCameraFar(float splitCameraFar) { _splitCameraFar = splitCameraFar; }
 
-    inline const Mat4 &getMatShadowAtlas() const { return _matShadowAtlas; }
-    inline void setMatShadowAtlas(const Mat4 &matShadowAtlas) { _matShadowAtlas = matShadowAtlas; }
-
-    inline const Mat4 &getMatShadowViewProjAtlas() const { return _matShadowViewProjAtlas; }
-    inline void setMatShadowViewProjAtlas(const Mat4 &matShadowViewProjAtlas) { _matShadowViewProjAtlas = matShadowViewProjAtlas; }
+    inline const Vec4 &getCSMAtlas() const { return _csmAtlas; }
 
 private:
     void calculateAtlas(uint32_t level);
@@ -119,8 +115,7 @@ private:
     float _splitCameraNear{0.0F};
     float _splitCameraFar{0.0F};
 
-    Mat4 _matShadowAtlas;
-    Mat4 _matShadowViewProjAtlas;
+    Vec4 _csmAtlas;
 };
 
 class CSMLayers {
@@ -151,15 +146,18 @@ private:
     void updateFixedArea(const scene::DirectionalLight *dirLight) const;
     void calculateCSM(const scene::Camera *camera, const scene::DirectionalLight *dirLight, const scene::Shadows *shadowInfo);
 
-    RenderObjectList _castShadowObjects;
-    RenderObjectList _layerObjects;
-
     // LevelCount is a scalar, Indicates the number.
     uint32_t _levelCount{0U};
+
     // The ShadowTransformInfo object for 'fixed area shadow' || 'maximum clipping info' || 'CSM layers = 1'.
     ShadowTransformInfo *_specialLayer{nullptr};
-    ccstd::array<CSMLayerInfo *, 4> _layers{};
+    
     float _shadowDistance{0.0F};
+
+    ccstd::array<CSMLayerInfo *, 4> _layers{};
+
+    RenderObjectList _castShadowObjects;
+    RenderObjectList _layerObjects;
 };
 } // namespace pipeline
 } // namespace cc

@@ -363,6 +363,13 @@ const uiElements = {
                 if (autoflag) {
                     const oldChildren = Array.from(element.children);
                     const children = [];
+
+                    const oldCheckbox = element.querySelector('[slot="header"] > ui-checkbox');
+                    if (oldCheckbox) {
+                        oldCheckbox.removeEventListener('change', oldCheckbox.changeEvent);
+                        oldCheckbox.changeEvent = undefined;
+                    }
+
                     const header = document.createElement('ui-prop');
                     header.setAttribute('slot', 'header');
                     header.setAttribute('type', 'dump');
@@ -370,10 +377,11 @@ const uiElements = {
                     header.className = 'header';
                     header.dump = this.getObjectByKey(this.dump.value, key);
                     const checkbox = document.createElement('ui-checkbox');
-                    checkbox.addEventListener('change', (event) => {
+                    checkbox.changeEvent = (event) => {
                         this.getObjectByKey(this.dump.value, key).value.enable.value = event.target.value;
                         header.dispatch('change-dump');
-                    });
+                    };
+                    checkbox.addEventListener('change', checkbox.changeEvent);
                     checkbox.setAttribute('value', this.getObjectByKey(this.dump.value, key).value.enable.value);
                     const label = document.createElement('ui-label');
                     label.setAttribute('value', this.getName(this.getObjectByKey(this.dump.value, key)));
@@ -669,7 +677,7 @@ exports.$ = {
     noisePreview: '#noisePreview',
 
 };
-exports.ready = function () {
+exports.ready = function() {
     for (const key in uiElements) {
         const element = uiElements[key];
         if (typeof element.ready === 'function') {
@@ -677,7 +685,7 @@ exports.ready = function () {
         }
     }
 };
-exports.update = function (dump) {
+exports.update = function(dump) {
     this.dump = dump;
     for (const key in uiElements) {
         const element = uiElements[key];
@@ -691,3 +699,54 @@ exports.style = /* css */`
         margin-left: 10px;
     }
 `;
+
+exports.listeners = {
+    async 'change-dump'(event) {
+
+        const target = event.target;
+        if (!target) {
+            return;
+        }
+
+        const dump = event.target.dump;
+        if (!dump) {
+            return;
+        }
+
+        // renderMode选择mesh次数
+        if (dump.path.endsWith('renderer.renderMode') && dump.value === 4) {
+            Editor.Metrics._trackEventWithTimer({
+                category: 'particleSystem',
+                id: 'A100011',
+                value: 1,
+            });
+        }
+
+        // 粒子系统其他模块埋点
+        const trackMap = {
+            'noiseModule.enable': 'A100000',
+            'shapeModule.enable': 'A100001',
+            velocityOvertimeModule: 'A100002',
+            forceOvertimeModule: 'A100003',
+            'sizeOvertimeModule.enable': 'A100004',
+            'rotationOvertimeModule.enable': 'A100005',
+            colorOverLifetimeModule: 'A100006',
+            textureAnimationModule: 'A100007',
+            'limitVelocityOvertimeModule.enable':'A100008',
+            'trailModule.enable': 'A100009',
+            'renderer.useGPU': 'A100010',
+        };
+
+        const dumpKey = Object.keys(trackMap).find(key => dump.path.endsWith(key));
+        if (!dumpKey) { return; }
+
+        const value = dump.type === 'Boolean' ? dump.value : dump.value.enable.value;
+        if (!value) { return; }
+
+        Editor.Metrics._trackEventWithTimer({
+            category: 'particleSystem',
+            id: trackMap[dumpKey],
+            value: 1,
+        });
+    },
+};

@@ -77,6 +77,30 @@ void ShadowFlow::activate(RenderPipeline *pipeline) {
     const int32_t isLinear = 0;
     pipeline->setValue("CC_SHADOWMAP_USE_LINEAR_DEPTH", isLinear);
 
+    // 0: UNIFORM_VECTORS_LESS_EQUAL_64, 1: UNIFORM_VECTORS_GREATER_EQUAL_125.
+    const auto csmSupported = pipeline->getDevice()->getCapabilities().maxFragmentUniformVectors >=
+                              (UBOGlobal::COUNT + UBOCamera::COUNT + UBOShadow::COUNT + UBOCSM::COUNT) >> 2;
+    pipeline->getPipelineSceneData()->setCSMSupported(csmSupported);
+    pipeline->setValue("CC_SUPPORT_CASCADED_SHADOW_MAP", csmSupported);
+
+    // 0: CC_SHADOW_NONE, 1: CC_SHADOW_PLANAR, 2: CC_SHADOW_MAP
+    pipeline->setValue("CC_SHADOW_TYPE", 0);
+
+    // 0: PCFType.HARD, 1: PCFType.SOFT, 2: PCFType.SOFT_2X, 3: PCFType.SOFT_4X
+    pipeline->setValue("CC_DIR_SHADOW_PCF_TYPE", static_cast<int32_t>(scene::PCFType::HARD));
+
+    // 0: CC_DIR_LIGHT_SHADOW_UNIFORM, 1: CC_DIR_LIGHT_SHADOW_CASCADED, 2: CC_DIR_LIGHT_SHADOW_VARIANCE
+    pipeline->setValue("CC_DIR_LIGHT_SHADOW_TYPE", 0);
+
+    // 0: PCFType.HARD, 1: PCFType.SOFT, 2: PCFType.SOFT_2X, 3: PCFType.SOFT_4X
+    pipeline->setValue("CC_DIR_SHADOW_PCF_TYPE", 0);
+
+    // 0: CC_DIR_LIGHT_SHADOW_PLANAR, 1: CC_DIR_LIGHT_SHADOW_UNIFORM, 2: CC_DIR_LIGHT_SHADOW_CASCADED, 3: CC_DIR_LIGHT_SHADOW_VARIANCE
+    pipeline->setValue("CC_DIR_LIGHT_SHADOW_TYPE", 0);
+
+    // 0: CC_CASCADED_LAYERS_TRANSITION_OFF, 1: CC_CASCADED_LAYERS_TRANSITION_ON
+    pipeline->setValue("CC_CASCADED_LAYERS_TRANSITION", 0);
+
     pipeline->onGlobalPipelineStateChanged();
 }
 
@@ -117,7 +141,8 @@ void ShadowFlow::render(scene::Camera *camera) {
         if (mainLight->isShadowFixedArea()) {
             renderStage(globalDS, camera, mainLight, shadowFrameBuffer);
         } else {
-            for (uint32_t i = 0; i < static_cast<uint32_t>(mainLight->getCSMLevel()); ++i) {
+            const auto level = _pipeline->getPipelineSceneData()->getCSMSupported() ? static_cast<uint32_t>(mainLight->getCSMLevel()) : 1U;
+            for (uint32_t i = 0; i < level; ++i) {
                 renderStage(globalDS, camera, mainLight, shadowFrameBuffer, i);
             }
         }
@@ -142,8 +167,8 @@ void ShadowFlow::render(scene::Camera *camera) {
 }
 
 void ShadowFlow::renderStage(gfx::DescriptorSet *globalDS, scene::Camera *camera, const scene::Light *light, gfx::Framebuffer *framebuffer, uint32_t level) {
-    for (auto *stage : _stages) {
-        auto *shadowStage = static_cast<ShadowStage *>(stage);
+    for (auto &stage : _stages) {
+        auto *shadowStage = static_cast<ShadowStage *>(stage.get());
         shadowStage->setUsage(globalDS, light, framebuffer, level);
         shadowStage->render(camera);
     }
@@ -175,8 +200,8 @@ void ShadowFlow::clearShadowMap(scene::Camera *camera) {
         }
 
         auto *shadowFrameBuffer = shadowFramebufferMap.at(mainLight).get();
-        for (auto *stage : _stages) {
-            auto *shadowStage = static_cast<ShadowStage *>(stage);
+        for (auto &stage : _stages) {
+            auto *shadowStage = static_cast<ShadowStage *>(stage.get());
             shadowStage->setUsage(globalDS, mainLight, shadowFrameBuffer);
             shadowStage->render(camera);
         }
@@ -189,8 +214,8 @@ void ShadowFlow::clearShadowMap(scene::Camera *camera) {
         }
 
         auto *shadowFrameBuffer = shadowFramebufferMap.at(light).get();
-        for (auto *stage : _stages) {
-            auto *shadowStage = static_cast<ShadowStage *>(stage);
+        for (auto &stage : _stages) {
+            auto *shadowStage = static_cast<ShadowStage *>(stage.get());
             shadowStage->setUsage(ds, light, shadowFrameBuffer);
             shadowStage->clearFramebuffer(camera);
         }

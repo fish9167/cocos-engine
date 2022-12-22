@@ -26,11 +26,11 @@
 import { AudioPlayer } from 'pal/audio';
 import { ccclass, help, menu, tooltip, type, range, serializable } from 'cc.decorator';
 import { AudioPCMDataView, AudioState } from '../../pal/audio/type';
-import { Component } from '../core/components/component';
-import { clamp } from '../core/math';
+import { Component } from '../scene-graph/component';
+import { clamp } from '../core';
 import { AudioClip } from './audio-clip';
 import { audioManager } from './audio-manager';
-import { Node } from '../core';
+import { Node } from '../scene-graph';
 
 const _LOADED_EVENT = 'audiosource-loaded';
 
@@ -75,6 +75,17 @@ export class AudioSource extends Component {
     private _isLoaded = false;
 
     private _lastSetClip: AudioClip | null = null;
+
+    private _resetPlayer () {
+        if (this._player) {
+            audioManager.removePlaying(this._player);
+            this._player.offEnded();
+            this._player.offInterruptionBegin();
+            this._player.offInterruptionEnd();
+            this._player.destroy();
+            this._player = null;
+        }
+    }
     /**
      * @en
      * The default AudioClip to be played for this audio source.
@@ -95,18 +106,22 @@ export class AudioSource extends Component {
     }
     private _syncPlayer () {
         const clip = this._clip;
-        this._isLoaded = false;
         if (this._lastSetClip === clip) {
             return;
         }
         if (!clip) {
             this._lastSetClip = null;
+            this._resetPlayer();
             return;
         }
         if (!clip._nativeAsset) {
             console.error('Invalid audio clip');
             return;
         }
+        // The state of _isloaded cannot be modified if clip is the wrong argument.
+        // Because load is an asynchronous function, if it is called multiple times with the same arguments.
+        // It may cause an illegal state change
+        this._isLoaded = false;
         this._lastSetClip = clip;
         this._operationsBeforeLoading.length = 0;
         AudioPlayer.load(clip._nativeAsset.url, {
@@ -121,13 +136,7 @@ export class AudioSource extends Component {
             }
             this._isLoaded = true;
             // clear old player
-            if (this._player) {
-                audioManager.removePlaying(this._player);
-                this._player.offEnded();
-                this._player.offInterruptionBegin();
-                this._player.offInterruptionEnd();
-                this._player.destroy();
-            }
+            this._resetPlayer();
             this._player = player;
             player.onEnded(() => {
                 audioManager.removePlaying(player);
@@ -329,8 +338,9 @@ export class AudioSource extends Component {
         if (this.state === AudioState.PLAYING) {
             this._player?.stop().catch((e) => {});
         }
+        const player = this._player;
         this._player?.play().then(() => {
-            audioManager.addPlaying(this._player!);
+            audioManager.addPlaying(player!);
             this.node?.emit(AudioSourceEventType.STARTED, this);
         }).catch((e) => {});
     }
@@ -346,8 +356,9 @@ export class AudioSource extends Component {
             this._operationsBeforeLoading.push('pause');
             return;
         }
+        const player = this._player;
         this._player?.pause().then(() => {
-            audioManager.removePlaying(this._player!);
+            audioManager.removePlaying(player!);
         }).catch((e) => {});
     }
 
@@ -362,8 +373,9 @@ export class AudioSource extends Component {
             this._operationsBeforeLoading.push('stop');
             return;
         }
+        const player = this._player;
         this._player?.stop().then(() => {
-            audioManager.removePlaying(this._player!);
+            audioManager.removePlaying(player!);
         }).catch((e) => {});
     }
 

@@ -1,6 +1,4 @@
 function inject () {
-    window.top = window.parent = window
-
     window.ontouchstart = null;
     window.ontouchmove = null;
     window.ontouchend = null;
@@ -11,9 +9,13 @@ function inject () {
     window.outerHeight = window.innerHeight;
     window.clientWidth = window.innerWidth;
     window.clientHeight = window.innerHeight;
+    if (!__EDITOR__) {
+        window.top = window.parent = window;
+        window.location = require('./location');
+        window.document = require('./document');
+        window.navigator = require('./navigator');
+    }
 
-    window.location = require('./location');
-    window.document = require('./document');
     window.CanvasRenderingContext2D = require('./CanvasRenderingContext2D');
     window.Element = require('./Element');
     window.HTMLElement = require('./HTMLElement');
@@ -25,20 +27,20 @@ function inject () {
     window.__canvas = new HTMLCanvasElement();
     window.__canvas._width = window.innerWidth;
     window.__canvas._height = window.innerHeight;
-    window.navigator = require('./navigator');
+
     window.Image = require('./Image');
     window.FileReader = require('./FileReader');
     window.FontFace = require('./FontFace');
     window.FontFaceSet = require('./FontFaceSet');
     window.EventTarget = require('./EventTarget');
-    window.Event = require('./Event');
+    window.Event = window.Event || require('./Event');
     window.TouchEvent = require('./TouchEvent');
     window.MouseEvent = require('./MouseEvent');
     window.KeyboardEvent = require('./KeyboardEvent');
     window.DeviceMotionEvent = require('./DeviceMotionEvent');
 
     // ES6
-    var m_fetch = require('./fetch');
+    const m_fetch = require('./fetch');
     window.fetch = m_fetch.fetch;
     window.Headers = m_fetch.Headers;
     window.Request = m_fetch.Request;
@@ -51,14 +53,16 @@ function inject () {
     window.orientation = jsb.device.getDeviceOrientation();
 
     // window.devicePixelRatio is readonly
-    Object.defineProperty(window, "devicePixelRatio", {
-        get: function() {
-            return jsb.device.getDevicePixelRatio ? jsb.device.getDevicePixelRatio() : 1;
-        },
-        set: function(_dpr) {/* ignore */},
-        enumerable: true,
-        configurable: true
-    });
+    if (!__EDITOR__) {
+        Object.defineProperty(window, 'devicePixelRatio', {
+            get () {
+                return jsb.device.getDevicePixelRatio ? jsb.device.getDevicePixelRatio() : 1;
+            },
+            set (_dpr) { /* ignore */ },
+            enumerable: true,
+            configurable: true,
+        });
+    }
 
     window.screen = {
         availTop: 0,
@@ -72,29 +76,29 @@ function inject () {
         width: window.innerWidth,
         height: window.innerHeight,
         orientation: { //FIXME:cjh
-            type: 'portrait-primary' // portrait-primary, portrait-secondary, landscape-primary, landscape-secondary
+            type: 'portrait-primary', // portrait-primary, portrait-secondary, landscape-primary, landscape-secondary
         },
-        onorientationchange: function(event) {}
+        onorientationchange (event) {},
     };
 
-    window.addEventListener = function(eventName, listener, options) {
+    window.addEventListener = function (eventName, listener, options) {
         window.__canvas.addEventListener(eventName, listener, options);
     };
 
-    window.removeEventListener = function(eventName, listener, options) {
+    window.removeEventListener = function (eventName, listener, options) {
         window.__canvas.removeEventListener(eventName, listener, options);
     };
 
-    window.dispatchEvent = function(event) {
+    window.dispatchEvent = function (event) {
         window.__canvas.dispatchEvent(event);
     };
 
-    window.getComputedStyle = function(element) {
+    window.getComputedStyle = function (element) {
         return {
            position: 'absolute',
-           left:     '0px',
-           top:      '0px',
-           height:   '0px'
+           left: '0px',
+           top: '0px',
+           height: '0px',
         };
     };
 
@@ -112,13 +116,13 @@ function inject () {
         window.clientWidth = window.innerWidth;
         window.clientHeight = window.innerHeight;
         // emit resize consistent with web behavior
-        let resizeEvent = new Event('resize');
+        const resizeEvent = new Event('resize');
         resizeEvent._target = window;
         window.dispatchEvent(resizeEvent);
     };
 
-    window.focus = function() {};
-    window.scroll = function() {};
+    window.focus = function () {};
+    window.scroll = function () {};
 
     window._isInjected = true;
 }
@@ -126,6 +130,6 @@ function inject () {
 if (!window._isInjected) {
     inject();
 }
-
-
-window.localStorage = sys.localStorage;
+if (!__EDITOR__) {
+    window.localStorage = sys.localStorage;
+}

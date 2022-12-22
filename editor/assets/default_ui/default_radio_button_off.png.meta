@@ -1,5 +1,5 @@
 {
-  "ver": "1.0.24",
+  "ver": "1.0.25",
   "importer": "image",
   "imported": true,
   "uuid": "f12a23c4-b924-4322-a260-3d982428f1e8",
@@ -123,7 +123,11 @@
             13,
             0
           ]
-        }
+        },
+        "pixelsToUnit": 100,
+        "pivotX": 0.5,
+        "pivotY": 0.5,
+        "meshType": 0
       },
       "displayName": "default_radio_button_off",
       "id": "f9941",

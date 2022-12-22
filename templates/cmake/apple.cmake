@@ -8,10 +8,12 @@ macro(cc_ios_before_target target_name)
     list(APPEND CC_PROJ_SOURCES
         ${CC_UI_RESOURCES}
     ) 
-    if (USE_PORTRAIT)
-        configure_file(${CC_PROJECT_DIR}/LaunchScreenBackgroundPortrait.png ${CC_PROJECT_DIR}/LaunchScreenBackground.png COPYONLY)
-    else()
-        configure_file(${CC_PROJECT_DIR}/LaunchScreenBackgroundLandscape.png ${CC_PROJECT_DIR}/LaunchScreenBackground.png COPYONLY)
+    if(NOT EXISTS ${CC_PROJECT_DIR}/LaunchScreenBackground.png)
+        if (USE_PORTRAIT)
+            configure_file(${CC_PROJECT_DIR}/LaunchScreenBackgroundPortrait.png ${CC_PROJECT_DIR}/LaunchScreenBackground.png COPYONLY)
+        else()
+            configure_file(${CC_PROJECT_DIR}/LaunchScreenBackgroundLandscape.png ${CC_PROJECT_DIR}/LaunchScreenBackground.png COPYONLY)
+        endif()
     endif()
     if(NOT CUSTOM_COPY_RESOURCE_HOOK)
         cc_include_resources(${RES_DIR}/data CC_ASSET_FILES)
@@ -112,6 +114,19 @@ macro(cc_mac_after_target target_name)
     target_include_directories(${target_name} PRIVATE
         ${CC_PROJECT_DIR}/../common/Classes
     )
+if(USE_SERVER_MODE)
+    if(EXISTS ${RES_DIR}/data/jsb-adapter)
+        set(bin_dir ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR})
+        add_custom_target(copy_resource ALL
+            COMMAND ${CMAKE_COMMAND} -E echo "Copying resources to ${bin_dir}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${bin_dir}/Resources
+            COMMAND ${CMAKE_COMMAND} -E copy_directory "${RES_DIR}/data/" "${bin_dir}/Resources/"
+            COMMAND ${CMAKE_COMMAND} -E echo "Copying resources done!"
+        )
+        add_dependencies(${target_name} copy_resource)
+        set_target_properties(copy_resource PROPERTIES FOLDER Utils)
+    endif()
+else()
     set_target_properties(${target_name} PROPERTIES
         OSX_ARCHITECTURES "x86_64;arm64"
         XCODE_ATTRIBUTE_MACOS_DEPLOYMENT_TARGET "${TARGET_OSX_VERSION}"
@@ -130,6 +145,8 @@ macro(cc_mac_after_target target_name)
             XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${CC_PROJECT_DIR}/entitlements.plist"
         )
     endif()
+endif()
     cc_common_after_target(${target_name})
 
 endmacro()
+

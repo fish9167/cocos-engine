@@ -37,6 +37,7 @@
 #include "renderer/pipeline/Define.h"
 #include "renderer/pipeline/InstancedBuffer.h"
 #include "scene/Define.h"
+#include "cocos/bindings/jswrapper/SeApi.h"
 
 namespace cc {
 namespace scene {
@@ -190,9 +191,19 @@ void Pass::setUniform(uint32_t handle, const MaterialProperty &value) {
     const gfx::Type type = Pass::getTypeFromHandle(handle);
     const uint32_t ofs = Pass::getOffsetFromHandle(handle);
     auto &block = _blocks[binding];
-    auto iter = type2writer.find(type);
-    if (iter != type2writer.end()) {
-        iter->second(block.data, value, static_cast<int>(ofs));
+#if CC_DEBUG
+    auto validatorIt = type2validator.find(type);
+    if (validatorIt != type2validator.end()) {
+        if (!validatorIt->second(value)) {
+            const ccstd::string stack = se::ScriptEngine::getInstance()->getCurrentStackTrace();
+            debug::errorID(12011, binding, stack.c_str());
+        }
+    }
+#endif
+
+    auto writerIt = type2writer.find(type);
+    if (writerIt != type2writer.end()) {
+        writerIt->second(block.data, value, static_cast<int>(ofs));
     }
 
     _rootBufferDirty = true;
@@ -336,7 +347,7 @@ void Pass::resetUniform(const ccstd::string &name) {
             const auto &floatArr = ccstd::get<ccstd::vector<float>>(value);
             auto iter = type2writer.find(type);
             if (iter != type2writer.end()) {
-                CC_ASSERT(floatArr.size() == 2);
+                CC_ASSERT_EQ(floatArr.size() , 2);
                 iter->second(block.data, toMaterialProperty(type, floatArr), static_cast<int32_t>(ofs));
             }
         }
@@ -364,7 +375,7 @@ void Pass::resetTexture(const ccstd::string &name, uint32_t index) {
             info = &iter->second;
             ccstd::string *pStrVal = ccstd::get_if<ccstd::string>(&iter->second.value.value());
             if (pStrVal != nullptr) {
-                texName = (*pStrVal) + "-texture";
+                texName = (*pStrVal) + getStringFromType(type);
             }
         }
     }
@@ -521,7 +532,7 @@ void Pass::doInit(const IPassInfoFull &info, bool /*copyDefines*/ /* = false */)
     _primitive = gfx::PrimitiveMode::TRIANGLE_LIST;
 
     _passIndex = info.passIndex;
-    _propertyIndex = info.propertyIndex != CC_INVALID_INDEX ? info.propertyIndex : info.passIndex;
+    _propertyIndex = info.propertyIndex.has_value() ? info.propertyIndex.value() : info.passIndex;
     _programName = info.program;
     _defines = info.defines; // cjh c++ always does copy by assignment.  copyDefines ? ({ ...info.defines }) : info.defines;
     _shaderInfo = programLib->getTemplate(info.program);
@@ -613,7 +624,7 @@ void Pass::doInit(const IPassInfoFull &info, bool /*copyDefines*/ /* = false */)
 void Pass::syncBatchingScheme() {
     auto iter = _defines.find("USE_INSTANCING");
     if (iter != _defines.end()) {
-        if (_device->hasFeature(gfx::Feature::INSTANCED_ARRAYS)) {
+        if (_device->hasFeature(gfx::Feature::INSTANCED_ARRAYS) && macroRecordAsBool(iter->second)) {
             _batchingScheme = BatchingSchemes::INSTANCING;
         } else {
             iter->second = false;
@@ -621,7 +632,7 @@ void Pass::syncBatchingScheme() {
         }
     } else {
         auto iter = _defines.find("USE_BATCHING");
-        if (iter != _defines.end()) {
+        if (iter != _defines.end() && macroRecordAsBool(iter->second)) {
             _batchingScheme = BatchingSchemes::VB_MERGING;
         } else {
             _batchingScheme = BatchingSchemes::NONE;
@@ -629,14 +640,14 @@ void Pass::syncBatchingScheme() {
     }
 }
 
-void Pass::initPassFromTarget(Pass *target, const gfx::DepthStencilState &dss, const gfx::BlendState &bs, ccstd::hash_t hashFactor) {
+void Pass::initPassFromTarget(Pass *target, const gfx::DepthStencilState &dss, ccstd::hash_t hashFactor) {
     _priority = target->_priority;
     _stage = target->_stage;
     _phase = target->_phase;
     _batchingScheme = target->_batchingScheme;
     _primitive = target->_primitive;
     _dynamicStates = target->_dynamicStates;
-    _blendState = bs; // cjh lifecycle?
+    _blendState = *target->getBlendState();
     _depthStencilState = dss;
     _descriptorSet = target->_descriptorSet;
     _rs = *target->getRasterizerState();
@@ -654,6 +665,10 @@ void Pass::initPassFromTarget(Pass *target, const gfx::DepthStencilState &dss, c
 
     _pipelineLayout = ProgramLib::getInstance()->getTemplateInfo(_programName)->pipelineLayout;
     _hash = target->_hash ^ hashFactor;
+}
+
+void Pass::updatePassHash() {
+    _hash = Pass::getPassHash(this);
 }
 
 gfx::DescriptorSetLayout *Pass::getLocalSetLayout() const {

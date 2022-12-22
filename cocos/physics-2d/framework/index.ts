@@ -1,4 +1,9 @@
+import { cclegacy } from '../../core';
+
 import * as PolygonSeparator from './utils/polygon-separator';
+import * as PolygonPartition from './utils/polygon-partition';
+
+import { selector } from './physics-selector';
 
 export * from './physics-types';
 
@@ -28,4 +33,9 @@ export * from './components/joints/hinge-joint-2d';
 
 export const Physics2DUtils = {
     PolygonSeparator,
+    PolygonPartition,
+};
+
+cclegacy.internal.physics2d = {
+    selector,
 };

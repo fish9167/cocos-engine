@@ -23,15 +23,15 @@
  THE SOFTWARE.
  */
 
-import { Component } from '../../core';
-import { Attribute, deviceManager, Feature } from '../../core/gfx';
+import { Component } from '../../scene-graph';
+import { Attribute, deviceManager, Feature } from '../../gfx';
 import ParticleBatchModel from '../models/particle-batch-model';
 import ParticleSystemRenderer from './particle-system-renderer-data';
-import { Material } from '../../core/assets';
+import { Material } from '../../asset/assets';
 import { Particle, IParticleModule } from '../particle';
 import { RenderMode } from '../enum';
-import { legacyCC } from '../../core/global-exports';
-import { Pass } from '../../core/renderer';
+import { cclegacy } from '../../core';
+import { Pass } from '../../render-scene';
 
 export interface IParticleSystemRenderer {
     onInit (ps: Component): void;
@@ -44,6 +44,7 @@ export interface IParticleSystemRenderer {
     attachToScene (): void;
     detachFromScene (): void;
     updateMaterialParams (): void;
+    updateVertexAttrib (): void;
     setVertexAttributes (): void;
     updateRenderMode (): void;
     onMaterialModified (index: number, material: Material): void;
@@ -110,7 +111,7 @@ export abstract class ParticleSystemRendererBase implements IParticleSystemRende
 
     public onDestroy () {
         if (this._model) {
-            legacyCC.director.root.destroyModel(this._model);
+            cclegacy.director.root.destroyModel(this._model);
             this._model = null;
         }
     }
@@ -132,6 +133,7 @@ export abstract class ParticleSystemRendererBase implements IParticleSystemRende
 
     public setVertexAttributes () {
         if (this._model) {
+            this.updateVertexAttrib();
             this._model.setVertexAttributes(this._renderInfo!.renderMode === RenderMode.Mesh ? this._renderInfo!.mesh : null, this._vertAttrs);
         }
     }
@@ -146,7 +148,7 @@ export abstract class ParticleSystemRendererBase implements IParticleSystemRende
 
     protected _initModel () {
         if (!this._model) {
-            this._model = legacyCC.director.root.createModel(ParticleBatchModel);
+            this._model = cclegacy.director.root.createModel(ParticleBatchModel);
             this._model!.setCapacity(this._particleSystem.capacity);
             this._model!.visFlags = this._particleSystem.visibility;
         }
@@ -158,6 +160,7 @@ export abstract class ParticleSystemRendererBase implements IParticleSystemRende
     public abstract getFreeParticle (): Particle | null;
     public abstract onMaterialModified (index: number, material: Material) : void;
     public abstract onRebuildPSO (index: number, material: Material) : void;
+    public abstract updateVertexAttrib (): void;
     public abstract updateRenderMode () : void;
     public abstract updateMaterialParams () : void;
     public abstract setNewParticle (p: Particle): void;

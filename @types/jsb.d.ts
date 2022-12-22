@@ -53,6 +53,7 @@ declare namespace jsb {
         x: number,
         y: number,
         button: number,
+        windowId: number,
     }
     type MouseEventCallback = (mouseEvent: MouseEvent) => void;
     export interface MouseWheelEvent extends MouseEvent {
@@ -65,11 +66,46 @@ declare namespace jsb {
     export let onMouseUp: MouseEventCallback | undefined;
     export let onMouseWheel: MouseWheelEventCallback | undefined;
 
-    type TouchEventCallback = (touchList: TouchList) =>  void;
+    type TouchEventCallback = (touchList: TouchList, windowId?: number) =>  void;
     export let onTouchStart: TouchEventCallback | undefined;
     export let onTouchMove: TouchEventCallback | undefined;
     export let onTouchEnd: TouchEventCallback | undefined;
     export let onTouchCancel: TouchEventCallback | undefined;
+
+    export interface ControllerInfo {
+        id: number;
+        axisInfoList: AxisInfo[],
+        buttonInfoList: ButtonInfo[],
+    }
+
+    export interface AxisInfo {
+        code: number,
+        value: number,
+    }
+
+    export interface ButtonInfo {
+        code: number,
+        isPressed: boolean,
+    }
+
+    export let onControllerInput: (infoList: ControllerInfo[]) => void | undefined;
+    export let onHandleInput: (infoList: ControllerInfo[]) => void | undefined;
+    export let onControllerChange: (controllerIds: number[]) => void | undefined;
+
+    export interface PoseInfo {
+        code: number,
+        x: number,
+        y: number,
+        z: number,
+        quaternionX: number,
+        quaternionY: number,
+        quaternionZ: number,
+        quaternionW: number,
+    }
+
+    export let onHandlePoseInput: (infoList: PoseInfo[]) => void | undefined;
+    export let onHMDPoseInput: (infoList: PoseInfo[]) => void | undefined;
+    export let onHandheldPoseInput: (infoList: PoseInfo[]) => void | undefined;
 
     export interface KeyboardEvent {
         altKey: boolean;
@@ -78,12 +114,23 @@ declare namespace jsb {
         shiftKey: boolean;
         repeat: boolean;
         keyCode: number;
+        windowId: number;
     }
     type KeyboardEventCallback = (keyboardEvent: KeyboardEvent) => void;
     export let onKeyDown: KeyboardEventCallback | undefined;
     export let onKeyUp: KeyboardEventCallback| undefined;
 
-    export let onResize: (size: {width: number, height: number}) => void | undefined;
+    export interface WindowEvent {
+        windowId: number;
+        width: number;
+        height: number;
+    }
+
+    /**
+     * @en WindowEvent.width and WindowEvent.height have both been multiplied by DPR
+     * @zh WindowEvent.width 和 WindowEvent.height 都已乘以 DPR
+     */
+    export let onResize: (event: WindowEvent) => void | undefined;
     export let onOrientationChanged: (event: {orientation: number}) => void | undefined;  // TODO: enum orientation type
     export let onResume: () => void | undefined;
     export let onPause: () => void | undefined;
@@ -139,7 +186,7 @@ declare namespace jsb {
         /**
          * Get PCM header without pcm data. if you want to get pcm data, use getOriginalPCMBuffer instead
          */
-        export function getPCMHeader (url: string) : PCMHeader;
+        export function getPCMHeader (url: string): PCMHeader;
         /**
          * Get PCM Data in decode format for example Int16Array, the format information is written in PCMHeader.
          * @param url: file relative path, for example player._path
@@ -148,57 +195,27 @@ declare namespace jsb {
         export function getOriginalPCMBuffer (url: string, channelID: number): ArrayBuffer | undefined;
     }
 
-    export namespace reflection{
-        /**
-         * https://docs.cocos.com/creator/manual/zh/advanced-topics/java-reflection.html
-         * call OBJC/Java static methods
-         *
-         * @param className
-         * @param methodName
-         * @param methodSignature
-         * @param parameters
-         */
-        export function callStaticMethod (className: string, methodName: string, methodSignature: string, ...parameters:any): any;
-    }
-    export namespace bridge{
-        /**
-         * send to native with at least one argument.
-         */
-        export function sendToNative(arg0: string, arg1?: string): void;
-        /**
-         * save your own callback controller with a js function,
-         * use jsb.bridge.onNative = (arg0: String, arg1: String)=>{...}
-         * @param args : received from native
-         */
-        export function onNative(arg0: string, arg1?: string|null): void;
-    }
-    /**
-     * Listener for jsbBridgeWrapper's event.
-     * It takes one argument as string which is transferred by jsbBridge.
-     */
-    export type OnNativeEventListener = (arg: string) => void;
-    export namespace jsbBridgeWrapper {
-        /** If there's no event registered, the wrapper will create one  */
-        export function addNativeEventListener(eventName: string, listener: OnNativeEventListener);
-        /**
-         * Dispatch the event registered on Objective-C, Java etc.
-         * No return value in JS to tell you if it works.
-         */
-        export function dispatchEventToNative(eventName: string, arg?: string);
-        /**
-         * Remove all listeners relative.
-         */
-        export function removeAllListenersForEvent(eventName: string);
-        /**
-         * Remove the listener specified
-         */
-        export function removeNativeEventListener(eventName: string, listener: OnNativeEventListener);
-        /**
-         * Remove all events, use it carefully!
-         */
-        export function removeAllListeners();
+    class NativePOD {
+        underlyingData(): ArrayBuffer;
+        _data(): TypedArray;
+        __data: TypedArray;
     }
 
+    export class Color extends NativePOD {
+    }
+    export class Quat extends NativePOD {
+    }
+    export class Vec2 extends NativePOD {
+    }
+    export class Vec3 extends NativePOD {
+    }
+    export class Vec4 extends NativePOD {
+    }
+
+    export class Mat3 extends NativePOD {
+    }
+    export class Mat4 extends NativePOD {
+    }
     export interface ManifestAsset {
         md5: string;
         path: string;
@@ -316,5 +333,29 @@ declare namespace jsb {
          */
         setVerifyCallback (verifyCallback: (path: string, asset: ManifestAsset) => boolean): void;
         setEventCallback (eventCallback: (event: EventAssetsManager) => void): void;
+    }
+}
+
+declare namespace ns {
+
+    class NativePOD {
+        underlyingData(): ArrayBuffer;
+        _arraybuffer(): ArrayBuffer;
+    }
+    export class Line extends jsb.NativePOD {
+    }
+    export class Plane extends jsb.NativePOD {
+    }
+    export class Ray extends jsb.NativePOD {
+    }
+    export class Triangle extends jsb.NativePOD {
+    }
+    export class Sphere extends jsb.NativePOD {
+    }
+    export class AABB extends jsb.NativePOD {
+    }
+    export class Capsule extends jsb.NativePOD {
+    }
+    export class Frustum extends jsb.NativePOD {
     }
 }

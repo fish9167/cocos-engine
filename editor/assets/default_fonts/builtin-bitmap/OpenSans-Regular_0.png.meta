@@ -1,5 +1,5 @@
 {
-  "ver": "1.0.24",
+  "ver": "1.0.25",
   "importer": "image",
   "imported": true,
   "uuid": "744d520a-8483-4fbc-a47b-ab57d28d6203",
@@ -111,7 +111,11 @@
             64,
             0
           ]
-        }
+        },
+        "pixelsToUnit": 100,
+        "pivotX": 0.5,
+        "pivotY": 0.5,
+        "meshType": 0
       },
       "ver": "1.0.11",
       "imported": true,

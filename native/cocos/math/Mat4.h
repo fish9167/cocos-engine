@@ -20,8 +20,7 @@
  This file was modified to fit the cocos2d-x project
  */
 
-#ifndef MATH_MAT4_H
-#define MATH_MAT4_H
+#pragma once
 
 #include "base/Macros.h"
 
@@ -113,25 +112,27 @@ public:
     /**
      * Constructs a matrix initialized to the specified value.
      *
-     * @param m11 The first element of the first row.
-     * @param m12 The second element of the first row.
-     * @param m13 The third element of the first row.
-     * @param m14 The fourth element of the first row.
-     * @param m21 The first element of the second row.
-     * @param m22 The second element of the second row.
-     * @param m23 The third element of the second row.
-     * @param m24 The fourth element of the second row.
-     * @param m31 The first element of the third row.
-     * @param m32 The second element of the third row.
-     * @param m33 The third element of the third row.
-     * @param m34 The fourth element of the third row.
-     * @param m41 The first element of the fourth row.
-     * @param m42 The second element of the fourth row.
-     * @param m43 The third element of the fourth row.
-     * @param m44 The fourth element of the fourth row.
+     * @param m00 The first element of the first row.
+     * @param m01 The second element of the first row.
+     * @param m02 The third element of the first row.
+     * @param m03 The fourth element of the first row.
+     * @param m10 The first element of the second row.
+     * @param m11 The second element of the second row.
+     * @param m12 The third element of the second row.
+     * @param m13 The fourth element of the second row.
+     * @param m20 The first element of the third row.
+     * @param m21 The second element of the third row.
+     * @param m22 The third element of the third row.
+     * @param m23 The fourth element of the third row.
+     * @param m30 The first element of the fourth row.
+     * @param m31 The second element of the fourth row.
+     * @param m32 The third element of the fourth row.
+     * @param m33 The fourth element of the fourth row.
      */
-    Mat4(float m11, float m12, float m13, float m14, float m21, float m22, float m23, float m24,
-         float m31, float m32, float m33, float m34, float m41, float m42, float m43, float m44);
+    Mat4(float m00, float m01, float m02, float m03,
+         float m10, float m11, float m12, float m13,
+         float m20, float m21, float m22, float m23,
+         float m30, float m31, float m32, float m33);
 
     /**
      * Creates a matrix initialized to the specified column-major array.
@@ -417,7 +418,7 @@ public:
     /**
      *  Decomposes the scale, rotation and translation components of this matrix.
      */
-    static void toRTS(Quaternion &rotation, Vec3 &translation, Vec3 &scale, Mat4 *dst);
+    static void toRTS(const Mat4 &src, Quaternion *rotation, Vec3 *translation, Vec3 *scale);
 
     /**
      * Decomposes the scale, rotation and translation components of this matrix.
@@ -726,25 +727,27 @@ public:
     /**
      * Sets the values of this matrix.
      *
-     * @param m11 The first element of the first row.
-     * @param m12 The second element of the first row.
-     * @param m13 The third element of the first row.
-     * @param m14 The fourth element of the first row.
-     * @param m21 The first element of the second row.
-     * @param m22 The second element of the second row.
-     * @param m23 The third element of the second row.
-     * @param m24 The fourth element of the second row.
-     * @param m31 The first element of the third row.
-     * @param m32 The second element of the third row.
-     * @param m33 The third element of the third row.
-     * @param m34 The fourth element of the third row.
-     * @param m41 The first element of the fourth row.
-     * @param m42 The second element of the fourth row.
-     * @param m43 The third element of the fourth row.
-     * @param m44 The fourth element of the fourth row.
+     * @param m00 The first element of the first row.
+     * @param m01 The second element of the first row.
+     * @param m02 The third element of the first row.
+     * @param m03 The fourth element of the first row.
+     * @param m10 The first element of the second row.
+     * @param m11 The second element of the second row.
+     * @param m12 The third element of the second row.
+     * @param m13 The fourth element of the second row.
+     * @param m20 The first element of the third row.
+     * @param m21 The second element of the third row.
+     * @param m22 The third element of the third row.
+     * @param m23 The fourth element of the third row.
+     * @param m30 The first element of the fourth row.
+     * @param m31 The second element of the fourth row.
+     * @param m32 The third element of the fourth row.
+     * @param m33 The fourth element of the fourth row.
      */
-    void set(float m11, float m12, float m13, float m14, float m21, float m22, float m23, float m24,
-             float m31, float m32, float m33, float m34, float m41, float m42, float m43, float m44);
+    void set(float m00, float m01, float m02, float m03,
+             float m10, float m11, float m12, float m13,
+             float m20, float m21, float m22, float m23,
+             float m30, float m31, float m32, float m33);
 
     /**
      * Sets the values of this matrix to those in the specified column-major array.
@@ -785,61 +788,6 @@ public:
      * @param dst A matrix to store the result in.
      */
     static void subtract(const Mat4 &m1, const Mat4 &m2, Mat4 *dst);
-
-    /**
-     * Transforms the specified point by this matrix.
-     *
-     * The result of the transformation is stored directly into point.
-     *
-     * @param point The point to transform and also a vector to hold the result in.
-     */
-    inline void transformPoint(Vec3 *point) const {
-        CC_ASSERT(point);
-        transformVector(point->x, point->y, point->z, 1.0F, point);
-    }
-
-    /**
-     * Transforms the specified point by this matrix, and stores
-     * the result in dst.
-     *
-     * @param point The point to transform.
-     * @param dst A vector to store the transformed point in.
-     */
-    inline void transformPoint(const Vec3 &point, Vec3 *dst) const {
-        CC_ASSERT(dst);
-        transformVector(point.x, point.y, point.z, 1.0F, dst);
-    }
-
-    /**
-     * Transforms the specified vector by this matrix by
-     * treating the fourth (w) coordinate as zero.
-     *
-     * The result of the transformation is stored directly into vector.
-     *
-     * @param vector The vector to transform and also a vector to hold the result in.
-     */
-    void transformVector(Vec3 *vector) const;
-
-    /**
-     * Transforms the specified vector by this matrix by
-     * treating the fourth (w) coordinate as zero, and stores the
-     * result in dst.
-     *
-     * @param vector The vector to transform.
-     * @param dst A vector to store the transformed vector in.
-     */
-    void transformVector(const Vec3 &vector, Vec3 *dst) const;
-
-    /**
-     * Transforms the specified vector by this matrix.
-     *
-     * @param x The vector x-coordinate to transform by.
-     * @param y The vector y-coordinate to transform by.
-     * @param z The vector z-coordinate to transform by.
-     * @param w The vector w-coordinate to transform by.
-     * @param dst A vector to store the transformed point in.
-     */
-    void transformVector(float x, float y, float z, float w, Vec3 *dst) const;
 
     /**
      * Transforms the specified vector by this matrix.
@@ -973,6 +921,11 @@ public:
      */
     inline Mat4 &operator*=(const Mat4 &mat);
 
+    /**
+     * Determines if this matrix is approximately equal to the given matrix.
+     */
+    bool approxEquals(const Mat4 &v, float precision = CC_FLOAT_CMP_PRECISION) const;
+
     /** equals to a matrix full of zeros */
     static const Mat4 ZERO;
     /** equals to the identity matrix */
@@ -983,28 +936,6 @@ private:
                                       const Vec3 &cameraUpVector, const Vec3 *cameraForwardVector,
                                       Mat4 *dst);
 };
-
-/**
- * Transforms the given vector by the given matrix.
- *
- * Note: this treats the given vector as a vector and not as a point.
- *
- * @param v The vector to transform.
- * @param m The matrix to transform by.
- * @return This vector, after the transformation occurs.
- */
-inline Vec3 &operator*=(Vec3 &v, const Mat4 &m);
-
-/**
- * Transforms the given vector by the given matrix.
- *
- * Note: this treats the given vector as a vector and not as a point.
- *
- * @param m The matrix to transform by.
- * @param v The vector to transform.
- * @return The resulting transformed vector.
- */
-inline const Vec3 operator*(const Mat4 &m, const Vec3 &v);
 
 /**
  * Transforms the given vector by the given matrix.
@@ -1034,5 +965,3 @@ NS_CC_MATH_END
  @}
  */
 #include "math/Mat4.inl"
-
-#endif // MATH_MAT4_H

@@ -24,7 +24,10 @@
  ****************************************************************************/
 
 #include "bindings/auto/jsb_assets_auto.h"
-#include "core/event/EventTypesToJS.h"
+#include "core/assets/Material.h"
+#include "core/assets/SimpleTexture.h"
+#include "core/assets/TextureBase.h"
+#include "core/data/JSBNativeDataHolder.h"
 #include "jsb_scene_manual.h"
 
 #ifndef JSB_ALLOC
@@ -46,12 +49,15 @@ static bool js_assets_ImageAsset_setData(se::State &s) // NOLINT(readability-ide
         if (args[0].isObject()) {
             if (args[0].toObject()->isTypedArray()) {
                 args[0].toObject()->getTypedArrayData(&data, nullptr);
+            } else if (args[0].toObject()->isArrayBuffer()) {
+                args[0].toObject()->getArrayBufferData(&data, nullptr);
             } else {
                 auto *dataHolder = static_cast<cc::JSBNativeDataHolder *>(args[0].toObject()->getPrivateData());
+                CC_ASSERT_NOT_NULL(dataHolder);
                 data = dataHolder->getData();
             }
         } else {
-            CC_ASSERT(false);
+            CC_ABORT();
         }
         cobj->setData(data);
         return true;
@@ -66,14 +72,15 @@ static bool js_assets_SimpleTexture_registerListeners(se::State &s) // NOLINT(re
     auto *cobj = SE_THIS_OBJECT<cc::SimpleTexture>(s);
     SE_PRECONDITION2(cobj, false, "Invalid Native Object");
     auto *thisObj = s.thisObject();
-    cobj->on(cc::EventTypesToJS::SIMPLE_TEXTURE_GFX_TEXTURE_UPDATED, [thisObj](cc::gfx::Texture *texture) {
+
+    cobj->on<cc::SimpleTexture::TextureUpdated>([thisObj](cc::SimpleTexture * /*emitter*/, cc::gfx::Texture *texture) {
         se::AutoHandleScope hs;
         se::Value arg0;
         nativevalue_to_se(texture, arg0, nullptr);
         se::ScriptEngine::getInstance()->callFunction(thisObj, "_onGFXTextureUpdated", 1, &arg0);
     });
 
-    cobj->on(cc::EventTypesToJS::SIMPLE_TEXTURE_AFTER_ASSIGN_IMAGE, [thisObj](cc::ImageAsset *image) {
+    cobj->on<cc::SimpleTexture::AfterAssignImage>([thisObj](cc::SimpleTexture * /*emitter*/, cc::ImageAsset *image) {
         se::AutoHandleScope hs;
         se::Value arg0;
         nativevalue_to_se(image, arg0, nullptr);
@@ -86,10 +93,10 @@ SE_BIND_FUNC(js_assets_SimpleTexture_registerListeners) // NOLINT(readability-id
 
 static bool js_assets_TextureBase_registerGFXSamplerUpdatedListener(se::State &s) // NOLINT(readability-identifier-naming)
 {
-    auto *cobj = SE_THIS_OBJECT<cc::SimpleTexture>(s);
+    auto *cobj = SE_THIS_OBJECT<cc::TextureBase>(s);
     SE_PRECONDITION2(cobj, false, "Invalid Native Object");
     auto *thisObj = s.thisObject();
-    cobj->on(cc::EventTypesToJS::TEXTURE_BASE_GFX_SAMPLER_UPDATED, [thisObj](cc::gfx::Sampler *sampler) {
+    cobj->on<cc::TextureBase::SamplerUpdated>([thisObj](cc::TextureBase * /*emitter*/, cc::gfx::Sampler *sampler) {
         se::AutoHandleScope hs;
         se::Value arg0;
         nativevalue_to_se(sampler, arg0, nullptr);
@@ -105,7 +112,7 @@ static bool js_assets_Material_registerPassesUpdatedListener(se::State &s) // NO
     auto *cobj = SE_THIS_OBJECT<cc::Material>(s);
     SE_PRECONDITION2(cobj, false, "Invalid Native Object");
     auto *thisObj = s.thisObject();
-    cobj->on(cc::EventTypesToJS::MATERIAL_PASSES_UPDATED, [thisObj]() {
+    cobj->on<cc::Material::PassesUpdated>([thisObj](cc::Material * /*emitter*/ ){
         se::AutoHandleScope hs;
         se::ScriptEngine::getInstance()->callFunction(thisObj, "_onPassesUpdated", 0, nullptr);
     });

@@ -106,6 +106,9 @@ using TextureList = ccstd::vector<Texture *>;
 using SamplerList = ccstd::vector<Sampler *>;
 using DescriptorSetLayoutList = ccstd::vector<DescriptorSetLayout *>;
 
+// make sure you have FILLED GRAPHs before enable this!
+static constexpr bool ENABLE_GRAPH_AUTO_BARRIER{false};
+
 /**
  * @en Graphics object type
  * @zh 图形API对象的类型
@@ -428,6 +431,7 @@ CC_ENUM_BITWISE_OPERATORS(BufferUsageBit);
 
 enum class BufferFlagBit : uint32_t {
     NONE = 0,
+    ENABLE_STAGING_WRITE = 0x01,
 };
 using BufferFlags = BufferFlagBit;
 CC_ENUM_BITWISE_OPERATORS(BufferFlagBit);
@@ -793,6 +797,16 @@ enum class BarrierType : uint32_t {
 };
 CC_ENUM_BITWISE_OPERATORS(BarrierType);
 
+enum class PassType : uint32_t {
+    RASTER,
+    COMPUTE,
+    COPY,
+    MOVE,
+    RAYTRACE,
+    PRESENT,
+};
+CC_ENUM_CONVERSION_OPERATOR(PassType);
+
 #define EXPOSE_COPY_FN(type)      \
     type &copy(const type &rhs) { \
         *this = rhs;              \
@@ -821,6 +835,8 @@ struct DeviceCaps {
     uint32_t maxUniformBlockSize{0};
     uint32_t maxTextureSize{0};
     uint32_t maxCubeMapTextureSize{0};
+    uint32_t maxArrayTextureLayers{0};
+    uint32_t max3DTextureSize{0};
     uint32_t uboOffsetAlignment{1};
 
     uint32_t maxComputeSharedMemorySize{0};
@@ -835,6 +851,13 @@ struct DeviceCaps {
     float clipSpaceSignY{1.F};
 
     EXPOSE_COPY_FN(DeviceCaps)
+};
+
+struct DeviceOptions {
+    // whether deduce barrier in gfx internally.
+    // if you wanna do the barrier thing by yourself
+    // on the top of gfx layer, set it to false.
+    bool enableBarrierDeduce{true};
 };
 
 struct Offset {
@@ -964,6 +987,7 @@ struct BindingMappingInfo {
 };
 
 struct SwapchainInfo {
+    uint32_t windowId{0};
     void *windowHandle{nullptr}; // @ts-overrides { type: 'HTMLCanvasElement' }
     VsyncMode vsyncMode{VsyncMode::ON};
 
@@ -1289,7 +1313,13 @@ using SubpassInfoList = ccstd::vector<SubpassInfo>;
 struct ALIGNAS(8) SubpassDependency {
     uint32_t srcSubpass{0};
     uint32_t dstSubpass{0};
-    GeneralBarrier *barrier{nullptr};
+    GeneralBarrier *generalBarrier{nullptr};
+    BufferBarrier **bufferBarriers{nullptr};
+    Buffer **buffers{nullptr};
+    uint32_t bufferBarrierCount{0};
+    TextureBarrier **textureBarriers{nullptr};
+    Texture **textures{nullptr};
+    uint32_t textureBarrierCount{0};
 #if CC_CPU_ARCH == CC_CPU_ARCH_32
     uint32_t _padding{0};
 #endif
@@ -1313,6 +1343,7 @@ struct ALIGNAS(8) GeneralBarrierInfo {
     AccessFlags nextAccesses{AccessFlagBit::NONE};
 
     BarrierType type{BarrierType::FULL};
+    uint32_t _padding{0};
 
     EXPOSE_COPY_FN(GeneralBarrierInfo)
 };
@@ -1530,14 +1561,14 @@ struct QueryPoolInfo {
 };
 
 struct FormatInfo {
-    const ccstd::string name;
-    const uint32_t size{0};
-    const uint32_t count{0};
-    const FormatType type{FormatType::NONE};
-    const bool hasAlpha{false};
-    const bool hasDepth{false};
-    const bool hasStencil{false};
-    const bool isCompressed{false};
+    ccstd::string name;
+    uint32_t size{0};
+    uint32_t count{0};
+    FormatType type{FormatType::NONE};
+    bool hasAlpha{false};
+    bool hasDepth{false};
+    bool hasStencil{false};
+    bool isCompressed{false};
 };
 
 struct MemoryStatus {

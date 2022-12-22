@@ -1,8 +1,8 @@
 /****************************************************************************
  Copyright (c) 2021 Xiamen Yaji Software Co., Ltd.
- 
+
  http://www.cocos.com
- 
+
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated engine source code (the "Software"), a limited,
  worldwide, royalty-free, non-assignable, revocable and non-exclusive license
@@ -10,10 +10,10 @@
  not use Cocos Creator software for developing other software or tools that's
  used for developing games. You are not granted to publish, distribute,
  sublicense, and/or sell copies of Cocos Creator.
- 
+
  The software or tools in this License Agreement are licensed, not sold.
  Xiamen Yaji Software Co., Ltd. reserves all rights not expressly granted to you.
- 
+
  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -78,6 +78,7 @@
 #pragma once
 
 #include <utility>
+#include "cocos/base/std/hash/hash_fwd.hpp"
 
 namespace cc {
 
@@ -130,14 +131,7 @@ public:
     // As reference count is 1 after creating a RefCounted object, so do not have to
     // invoke p->addRef();
     IntrusivePtr<T> &operator=(T *p) {
-        // AddRef first so that self assignment should work
-        if (p) {
-            p->addRef();
-        }
-        if (_ptr) {
-            _ptr->release();
-        }
-        _ptr = p;
+        reset(p);
         return *this;
     }
 
@@ -177,6 +171,24 @@ public:
         return _ptr != r;
     }
 
+    void reset() noexcept {
+        if (_ptr) {
+            _ptr->release();
+        }
+        _ptr = nullptr;
+    }
+
+    void reset(T *p) {
+        // AddRef first so that self assignment should work
+        if (p) {
+            p->addRef();
+        }
+        if (_ptr) {
+            _ptr->release();
+        }
+        _ptr = p;
+    }
+
     void swap(T **pp) noexcept {
         T *p = _ptr;
         _ptr = *pp;
@@ -202,3 +214,14 @@ protected:
 };
 
 } // namespace cc
+
+namespace ccstd {
+
+template <class T>
+struct hash<cc::IntrusivePtr<T>> {
+    hash_t operator()(const cc::IntrusivePtr<T> &val) const noexcept {
+        return hash<T *>{}(val.get());
+    }
+};
+
+} // namespace ccstd

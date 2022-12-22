@@ -72,7 +72,7 @@ void ShadowsInfo::setPlaneDirection(const Vec3 &val) {
 void ShadowsInfo::setPlaneHeight(float val) {
     _distance = val;
     if (_resource != nullptr) {
-        _resource->setDistance(-val);
+        _resource->setDistance(val);
     }
 }
 
@@ -138,8 +138,9 @@ gfx::Shader *Shadows::getPlanarShader(const ccstd::vector<IMacroPatch> &patches)
         createMaterial();
     }
 
-    const auto &passes = *_material->getPasses();
-    return passes[0]->getShaderVariant(patches);
+    const auto &passes = _material->getPasses();
+    CC_ASSERT(passes && !passes->empty());
+    return (passes && !passes->empty()) ? passes->at(0)->getShaderVariant(patches) : nullptr;
 }
 
 gfx::Shader *Shadows::getPlanarInstanceShader(const ccstd::vector<IMacroPatch> &patches) {
@@ -147,14 +148,25 @@ gfx::Shader *Shadows::getPlanarInstanceShader(const ccstd::vector<IMacroPatch> &
         createInstanceMaterial();
     }
 
-    const auto &passes = *_instancingMaterial->getPasses();
-    return passes[0]->getShaderVariant(patches);
+    const auto &passes = _instancingMaterial->getPasses();
+    CC_ASSERT(passes && !passes->empty());
+    return (passes && !passes->empty()) ? passes->at(0)->getShaderVariant(patches) : nullptr;
 }
 
 void Shadows::activate() {
     if (_enabled) {
         if (_type == ShadowType::PLANAR) {
             updatePlanarInfo();
+        } else {
+            auto *pipeline = pipeline::RenderPipeline::getInstance();
+            if (pipeline) {
+                pipeline->setValue("CC_SHADOW_TYPE", 2);
+            }
+        }
+    } else {
+        auto *pipeline = pipeline::RenderPipeline::getInstance();
+        if (pipeline) {
+            pipeline->setValue("CC_SHADOW_TYPE", 0);
         }
     }
 }
@@ -165,6 +177,11 @@ void Shadows::updatePlanarInfo() {
     }
     if (!_instancingMaterial) {
         createInstanceMaterial();
+    }
+
+    auto *pipeline = pipeline::RenderPipeline::getInstance();
+    if (pipeline) {
+        pipeline->setValue("CC_SHADOW_TYPE", 1);
     }
 }
 

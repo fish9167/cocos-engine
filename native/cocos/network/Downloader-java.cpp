@@ -32,6 +32,7 @@
 #include "network/Downloader.h"
 #include "platform/java/jni/JniHelper.h"
 #include "platform/java/jni/JniImp.h"
+#include "base/StringUtil.h"
 
 #ifndef JCLS_DOWNLOADER
     #define JCLS_DOWNLOADER "com/cocos/lib/CocosDownloader"
@@ -147,7 +148,8 @@ IDownloadTask *DownloaderJava::createCoTask(std::shared_ptr<const DownloadTask> 
                                        "createTask",
                                        "(" JARG_DOWNLOADER "I" JARG_STR JARG_STR "[" JARG_STR ")V")) {
         jclass jclassString = methodInfo.env->FindClass("java/lang/String");
-        jstring jstrURL = methodInfo.env->NewStringUTF(task->requestURL.c_str());
+        ccstd::string url(task->requestURL);
+        jstring jstrURL = methodInfo.env->NewStringUTF(StringUtil::replaceAll(url, " ", "%20").c_str());
         jstring jstrPath = methodInfo.env->NewStringUTF(task->storagePath.c_str());
         jobjectArray jarrayHeader = methodInfo.env->NewObjectArray(task->header.size() * 2, jclassString, nullptr);
         const ccstd::unordered_map<ccstd::string, ccstd::string> &headMap = task->header;
@@ -241,7 +243,7 @@ void DownloaderJava::onFinishImpl(int taskId, int errCode, const char *errStr, c
 
 extern "C" {
 
-JNIEXPORT void JNICALL JNI_DOWNLOADER(nativeOnProgress)(JNIEnv * /*env*/, jclass /*clazz*/, jint id, jint taskId, jlong dl, jlong dlnow, jlong dltotal) {
+JNIEXPORT void JNICALL JNI_DOWNLOADER(nativeOnProgress)(JNIEnv * /*env*/, jobject /*obj*/, jint id, jint taskId, jlong dl, jlong dlnow, jlong dltotal) {
     auto func = [=]() -> void {
         DLLOG("_nativeOnProgress(id: %d, taskId: %d, dl: %lld, dlnow: %lld, dltotal: %lld)", id, taskId, dl, dlnow, dltotal);
         //It's not thread-safe here, use thread-safe method instead
@@ -255,7 +257,7 @@ JNIEXPORT void JNICALL JNI_DOWNLOADER(nativeOnProgress)(JNIEnv * /*env*/, jclass
     CC_CURRENT_ENGINE()->getScheduler()->performFunctionInCocosThread(func);
 }
 
-JNIEXPORT void JNICALL JNI_DOWNLOADER(nativeOnFinish)(JNIEnv *env, jclass /*clazz*/, jint id, jint taskId, jint errCode, jstring errStr, jbyteArray data) {
+JNIEXPORT void JNICALL JNI_DOWNLOADER(nativeOnFinish)(JNIEnv *env, jobject /*obj*/, jint id, jint taskId, jint errCode, jstring errStr, jbyteArray data) {
     ccstd::string errStrTmp;
     ccstd::vector<uint8_t> dataTmp;
     if (errStr) {

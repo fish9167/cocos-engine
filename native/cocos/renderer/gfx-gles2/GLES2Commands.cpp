@@ -115,7 +115,7 @@ GLenum mapGLFormat(Format format) {
         case Format::ASTC_SRGBA_12X12: return GL_COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR;
 
         default: {
-            CC_ASSERT(false);
+            CC_ABORT();
             return GL_NONE;
         }
     }
@@ -167,7 +167,7 @@ GLenum mapGLType(Type type) {
         case Type::SAMPLER3D: return GL_SAMPLER_3D_OES;
         case Type::SAMPLER_CUBE: return GL_SAMPLER_CUBE;
         default: {
-            CC_ASSERT(false);
+            CC_ABORT();
             return GL_NONE;
         }
     }
@@ -195,7 +195,7 @@ Type mapType(GLenum glType) {
         case GL_SAMPLER_3D_OES: return Type::SAMPLER3D;
         case GL_SAMPLER_CUBE: return Type::SAMPLER_CUBE;
         default: {
-            CC_ASSERT(false);
+            CC_ABORT();
             return Type::UNKNOWN;
         }
     }
@@ -316,7 +316,7 @@ GLenum formatToGLType(Format format) {
             return GL_UNSIGNED_BYTE;
 
         default: {
-            CC_ASSERT(false);
+            CC_ABORT();
             return GL_NONE;
         }
     }
@@ -348,7 +348,7 @@ uint32_t glTypeSize(GLenum glType) {
         case GL_INT_SAMPLER_CUBE_MAP_ARRAY_OES:
         case GL_UNSIGNED_INT_SAMPLER_CUBE_MAP_ARRAY_OES: return 4;
         default: {
-            CC_ASSERT(false);
+            CC_ABORT();
             return 0;
         }
     }
@@ -473,7 +473,7 @@ void cmdFuncGLES2CreateBuffer(GLES2Device *device, GLES2GPUBuffer *gpuBuffer) {
         gpuBuffer->buffer = static_cast<uint8_t *>(CC_MALLOC(gpuBuffer->size));
         gpuBuffer->glTarget = GL_NONE;
     } else {
-        CC_ASSERT(false);
+        CC_ABORT();
         gpuBuffer->glTarget = GL_NONE;
     }
 }
@@ -566,7 +566,7 @@ void cmdFuncGLES2ResizeBuffer(GLES2Device *device, GLES2GPUBuffer *gpuBuffer) {
         gpuBuffer->buffer = static_cast<uint8_t *>(CC_MALLOC(gpuBuffer->size));
         gpuBuffer->glTarget = GL_NONE;
     } else {
-        CC_ASSERT(false);
+        CC_ABORT();
         gpuBuffer->glTarget = GL_NONE;
     }
 }
@@ -620,7 +620,7 @@ void cmdFuncGLES2CreateTexture(GLES2Device *device, GLES2GPUTexture *gpuTexture)
                 break;
             }
             default:
-                CC_ASSERT(false);
+                CC_ABORT();
                 break;
         }
     } else {
@@ -653,6 +653,86 @@ void cmdFuncGLES2CreateTexture(GLES2Device *device, GLES2GPUTexture *gpuTexture)
                             GL_CHECK(glCompressedTexImage2D(GL_TEXTURE_2D, i,
                                                             gpuTexture->glInternalFmt, w, h, 0,
                                                             imgSize, nullptr));
+                            w = std::max(1U, w >> 1);
+                            h = std::max(1U, h >> 1);
+                        }
+                    }
+                }
+                break;
+            }
+            case TextureType::TEX2D_ARRAY: {
+                gpuTexture->glTarget = GL_TEXTURE_3D;
+                CC_ASSERT((std::max(std::max(gpuTexture->width, gpuTexture->height), gpuTexture->arrayLayer) <= device->getCapabilities().max3DTextureSize)
+                    && "cmdFuncGLES2CreateTexture: texture2DArray's dimension is too large");
+                GL_CHECK(glGenTextures(1, &gpuTexture->glTexture));
+                if (gpuTexture->size > 0) {
+                    GLuint &glTexture = device->stateCache()->glTextures[device->stateCache()->texUint];
+                    if (gpuTexture->glTexture != glTexture) {
+                        GL_CHECK(glBindTexture(GL_TEXTURE_3D, gpuTexture->glTexture));
+                        glTexture = gpuTexture->glTexture;
+                    }
+                    if (!GFX_FORMAT_INFOS[static_cast<int>(gpuTexture->format)].isCompressed) {
+                        uint32_t w = gpuTexture->width;
+                        uint32_t h = gpuTexture->height;
+                        uint32_t d = gpuTexture->arrayLayer;
+                        for (uint32_t i = 0; i < gpuTexture->mipLevel; ++i) {
+                            GL_CHECK(glTexImage3DOES(GL_TEXTURE_3D, i,
+                                                     gpuTexture->glInternalFmt,
+                                                     w, h, d, 0,
+                                                     gpuTexture->glFormat, gpuTexture->glType,
+                                                     nullptr));
+                            w = std::max(1U, w >> 1);
+                            h = std::max(1U, h >> 1);
+                        }
+                    } else {
+                        uint32_t w = gpuTexture->width;
+                        uint32_t h = gpuTexture->height;
+                        uint32_t d = gpuTexture->arrayLayer;
+                        for (uint32_t i = 0; i < gpuTexture->mipLevel; ++i) {
+                            uint32_t imgSize = formatSize(gpuTexture->format, w, h, d);
+                            GL_CHECK(glCompressedTexImage3DOES(GL_TEXTURE_3D, i,
+                                                               gpuTexture->glInternalFmt,
+                                                               w, h, d, 0, imgSize,
+                                                               nullptr));
+                            w = std::max(1U, w >> 1);
+                            h = std::max(1U, h >> 1);
+                        }
+                    }
+                }
+                break;
+            }
+            case TextureType::TEX3D: {
+                gpuTexture->glTarget = GL_TEXTURE_3D;
+                GL_CHECK(glGenTextures(1, &gpuTexture->glTexture));
+                if (gpuTexture->size > 0) {
+                    GLuint &glTexture = device->stateCache()->glTextures[device->stateCache()->texUint];
+                    if (gpuTexture->glTexture != glTexture) {
+                        GL_CHECK(glBindTexture(GL_TEXTURE_3D, gpuTexture->glTexture));
+                        glTexture = gpuTexture->glTexture;
+                    }
+                    if (!GFX_FORMAT_INFOS[static_cast<int>(gpuTexture->format)].isCompressed) {
+                        uint32_t w = gpuTexture->width;
+                        uint32_t h = gpuTexture->height;
+                        uint32_t d = gpuTexture->depth;
+                        for (uint32_t i = 0; i < gpuTexture->mipLevel; ++i) {
+                            GL_CHECK(glTexImage3DOES(GL_TEXTURE_3D, i,
+                                                     gpuTexture->glInternalFmt,
+                                                     w, h, d, 0,
+                                                     gpuTexture->glFormat, gpuTexture->glType,
+                                                     nullptr));
+                            w = std::max(1U, w >> 1);
+                            h = std::max(1U, h >> 1);
+                        }
+                    } else {
+                        uint32_t w = gpuTexture->width;
+                        uint32_t h = gpuTexture->height;
+                        uint32_t d = gpuTexture->depth;
+                        for (uint32_t i = 0; i < gpuTexture->mipLevel; ++i) {
+                            uint32_t imgSize = formatSize(gpuTexture->format, w, h, d);
+                            GL_CHECK(glCompressedTexImage3DOES(GL_TEXTURE_3D, i,
+                                                               gpuTexture->glInternalFmt,
+                                                               w, h, d, 0, imgSize,
+                                                               nullptr));
                             w = std::max(1U, w >> 1);
                             h = std::max(1U, h >> 1);
                         }
@@ -700,7 +780,7 @@ void cmdFuncGLES2CreateTexture(GLES2Device *device, GLES2GPUTexture *gpuTexture)
                 break;
             }
             default:
-                CC_ASSERT(false);
+                CC_ABORT();
                 break;
         }
     }
@@ -763,6 +843,82 @@ void cmdFuncGLES2ResizeTexture(GLES2Device *device, GLES2GPUTexture *gpuTexture)
                 }
                 break;
             }
+            case TextureType::TEX2D_ARRAY: {
+                gpuTexture->glTarget = GL_TEXTURE_2D_ARRAY;
+                if (gpuTexture->size > 0) {
+                    GLuint &glTexture = device->stateCache()->glTextures[device->stateCache()->texUint];
+                    if (gpuTexture->glTexture != glTexture) {
+                        GL_CHECK(glBindTexture(GL_TEXTURE_3D, gpuTexture->glTexture));
+                        glTexture = gpuTexture->glTexture;
+                    }
+                    if (!GFX_FORMAT_INFOS[static_cast<int>(gpuTexture->format)].isCompressed) {
+                        uint32_t w = gpuTexture->width;
+                        uint32_t h = gpuTexture->height;
+                        uint32_t d = gpuTexture->arrayLayer;
+                        for (uint32_t i = 0; i < gpuTexture->mipLevel; ++i) {
+                            GL_CHECK(glTexImage3DOES(GL_TEXTURE_3D, i,
+                                                     gpuTexture->glInternalFmt,
+                                                     w, h, d, 0,
+                                                     gpuTexture->glFormat, gpuTexture->glType,
+                                                     nullptr));
+                            w = std::max(1U, w >> 1);
+                            h = std::max(1U, h >> 1);
+                        }
+                    } else {
+                        uint32_t w = gpuTexture->width;
+                        uint32_t h = gpuTexture->height;
+                        uint32_t d = gpuTexture->arrayLayer;
+                        for (uint32_t i = 0; i < gpuTexture->mipLevel; ++i) {
+                            uint32_t imgSize = formatSize(gpuTexture->format, w, h, d);
+                            GL_CHECK(glCompressedTexImage3DOES(GL_TEXTURE_3D, i,
+                                                               gpuTexture->glInternalFmt,
+                                                               w, h, d, 0, imgSize,
+                                                               nullptr));
+                            w = std::max(1U, w >> 1);
+                            h = std::max(1U, h >> 1);
+                        }
+                    }
+                }
+                break;
+            }
+            case TextureType::TEX3D: {
+                gpuTexture->glTarget = GL_TEXTURE_3D;
+                if (gpuTexture->size > 0) {
+                    GLuint &glTexture = device->stateCache()->glTextures[device->stateCache()->texUint];
+                    if (gpuTexture->glTexture != glTexture) {
+                        GL_CHECK(glBindTexture(GL_TEXTURE_3D, gpuTexture->glTexture));
+                        glTexture = gpuTexture->glTexture;
+                    }
+                    if (!GFX_FORMAT_INFOS[static_cast<int>(gpuTexture->format)].isCompressed) {
+                        uint32_t w = gpuTexture->width;
+                        uint32_t h = gpuTexture->height;
+                        uint32_t d = gpuTexture->depth;
+                        for (uint32_t i = 0; i < gpuTexture->mipLevel; ++i) {
+                            GL_CHECK(glTexImage3DOES(GL_TEXTURE_3D, i,
+                                                     gpuTexture->glInternalFmt,
+                                                     w, h, d, 0,
+                                                     gpuTexture->glFormat, gpuTexture->glType,
+                                                     nullptr));
+                            w = std::max(1U, w >> 1);
+                            h = std::max(1U, h >> 1);
+                        }
+                    } else {
+                        uint32_t w = gpuTexture->width;
+                        uint32_t h = gpuTexture->height;
+                        uint32_t d = gpuTexture->depth;
+                        for (uint32_t i = 0; i < gpuTexture->mipLevel; ++i) {
+                            uint32_t imgSize = formatSize(gpuTexture->format, w, h, d);
+                            GL_CHECK(glCompressedTexImage3DOES(GL_TEXTURE_3D, i,
+                                                               gpuTexture->glInternalFmt,
+                                                               w, h, d, 0, imgSize,
+                                                               nullptr));
+                            w = std::max(1U, w >> 1);
+                            h = std::max(1U, h >> 1);
+                        }
+                    }
+                }
+                break;
+            }
             case TextureType::CUBE: {
                 gpuTexture->glTarget = GL_TEXTURE_CUBE_MAP;
                 if (gpuTexture->size > 0) {
@@ -797,7 +953,7 @@ void cmdFuncGLES2ResizeTexture(GLES2Device *device, GLES2GPUTexture *gpuTexture)
                 break;
             }
             default:
-                CC_ASSERT(false);
+                CC_ABORT();
                 break;
         }
     } else {
@@ -818,7 +974,7 @@ void cmdFuncGLES2ResizeTexture(GLES2Device *device, GLES2GPUTexture *gpuTexture)
                 break;
             }
             default:
-                CC_ASSERT(false);
+                CC_ABORT();
                 break;
         }
     }
@@ -877,7 +1033,7 @@ void cmdFuncGLES2CreateShader(GLES2Device *device, GLES2GPUShader *gpuShader) {
                 break;
             }
             default: {
-                CC_ASSERT(false);
+                CC_ABORT();
                 return;
             }
         }
@@ -2543,7 +2699,7 @@ void cmdFuncGLES2UpdateBuffer(GLES2Device *device, GLES2GPUBuffer *gpuBuffer, co
                 break;
             }
             default:
-                CC_ASSERT(false);
+                CC_ABORT();
                 break;
         }
     }
@@ -2787,7 +2943,7 @@ void cmdFuncGLES2CopyBuffersToTexture(GLES2Device *device, const uint8_t *const 
             break;
         }
         default:
-            CC_ASSERT(false);
+            CC_ABORT();
             break;
     }
 

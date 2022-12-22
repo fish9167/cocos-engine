@@ -38,10 +38,6 @@ class Device;
 namespace pipeline {
 struct PSOInfo;
 
-#if defined(INITIAL_CAPACITY)
-    #undef INITIAL_CAPACITY
-#endif
-
 struct CC_DLL InstancedItem {
     uint32_t count = 0;
     uint32_t capacity = 0;
@@ -52,6 +48,9 @@ struct CC_DLL InstancedItem {
     gfx::Shader *shader = nullptr;
     gfx::DescriptorSet *descriptorSet = nullptr;
     gfx::Texture *lightingMap = nullptr;
+    gfx::Texture *reflectionProbeCubemap = nullptr;
+    gfx::Texture *reflectionProbePlanarMap = nullptr;
+    uint32_t reflectionProbeType = 0;
 };
 using InstancedItemList = ccstd::vector<InstancedItem>;
 using DynamicOffsetList = ccstd::vector<uint32_t>;
@@ -65,9 +64,9 @@ public:
     ~InstancedBuffer() override;
 
     void destroy();
-    void merge(const scene::Model *, const scene::SubModel *, uint32_t);
-    void merge(const scene::Model *, const scene::SubModel *, uint32_t, gfx::Shader *);
-    void uploadBuffers(gfx::CommandBuffer *cmdBuff);
+    void merge(scene::SubModel *, uint32_t);
+    void merge(scene::SubModel *, uint32_t, gfx::Shader *);
+    void uploadBuffers(gfx::CommandBuffer *cmdBuff) const;
     void clear();
     void setDynamicOffset(uint32_t idx, uint32_t value);
 

@@ -52,7 +52,7 @@ EShLanguage getShaderStage(ShaderStageFlagBit type) {
         case ShaderStageFlagBit::FRAGMENT: return EShLangFragment;
         case ShaderStageFlagBit::COMPUTE: return EShLangCompute;
         default: {
-            CC_ASSERT(false);
+            CC_ABORT();
             return EShLangVertex;
         }
     }
@@ -64,7 +64,7 @@ glslang::EShTargetClientVersion getClientVersion(int vulkanMinorVersion) {
         case 1: return glslang::EShTargetVulkan_1_1;
         case 2: return glslang::EShTargetVulkan_1_2;
         default: {
-            CC_ASSERT(false);
+            CC_ABORT();
             return glslang::EShTargetVulkan_1_0;
         }
     }
@@ -76,7 +76,7 @@ glslang::EShTargetLanguageVersion getTargetVersion(int vulkanMinorVersion) {
         case 1: return glslang::EShTargetSpv_1_3;
         case 2: return glslang::EShTargetSpv_1_5;
         default: {
-            CC_ASSERT(false);
+            CC_ABORT();
             return glslang::EShTargetSpv_1_0;
         }
     }
@@ -410,7 +410,7 @@ CCMTLGPUPipelineState *getClearRenderPassPipelineState(CCMTLDevice *device, Rend
     pipelineInfo.depthStencilState = dsState;
 
     PipelineState *pipelineState = device->createPipelineState(std::move(pipelineInfo));
-    pipelineMap.emplace(std::make_pair(curPass->getHash(), pipelineState));
+    pipelineMap.emplace(curPass->getHash(), pipelineState);
     ((CCMTLPipelineState *)pipelineState)->check();
     delete pipelineInfo.shader;
     return static_cast<CCMTLPipelineState *>(pipelineState)->getGPUPipelineState();
@@ -808,7 +808,7 @@ MTLPrimitiveType mu::toMTLPrimitiveType(PrimitiveMode mode) {
         }
         default: {
             //TODO: how to support these mode?
-            CC_ASSERT(false);
+            CC_ABORT();
             return MTLPrimitiveTypeTriangle;
         }
     }
@@ -878,9 +878,9 @@ MTLSamplerAddressMode mu::toMTLSamplerAddressMode(Address mode) {
 int mu::toMTLSamplerBorderColor(const Color &color) {
 #if (CC_PLATFORM == CC_PLATFORM_MACOS)
     float diff = color.x - 0.5f;
-    if (math::IsEqualF(color.w, 0.f))
+    if (math::isEqualF(color.w, 0.f))
         return MTLSamplerBorderColorTransparentBlack;
-    else if (math::IsEqualF(diff, 0.f))
+    else if (math::isEqualF(diff, 0.f))
         return MTLSamplerBorderColorOpaqueBlack;
     else
         return MTLSamplerBorderColorOpaqueWhite;
@@ -953,6 +953,8 @@ ccstd::string mu::spirv2MSL(const uint32_t *ir, size_t word_count,
 #endif
     options.emulate_subgroups = true;
     options.pad_fragment_output_components = true;
+    // fully support
+    options.set_msl_version(2, 0, 0);
     if (isFramebufferFetchSupported()) {
         options.use_framebuffer_fetch_subpasses = true;
 #if (CC_PLATFORM == CC_PLATFORM_MACOS)
@@ -1198,6 +1200,22 @@ uint32_t mu::getMaxVertexAttributes(uint32_t family) {
             return 31;
     }
 }
+
+uint32_t mu::getMaxUniformBufferBindings(uint32_t family) {
+    switch (static_cast<GPUFamily>(family)) {
+        case GPUFamily::Apple1:
+        case GPUFamily::Apple2:
+        case GPUFamily::Apple3:
+        case GPUFamily::Apple4:
+        case GPUFamily::Apple5:
+        case GPUFamily::Apple6:
+            return 31;
+        case GPUFamily::Mac1:
+        case GPUFamily::Mac2:
+            return 14;
+    }
+}
+
 
 uint32_t mu::getMaxEntriesInBufferArgumentTable(uint32_t family) {
     switch (static_cast<GPUFamily>(family)) {

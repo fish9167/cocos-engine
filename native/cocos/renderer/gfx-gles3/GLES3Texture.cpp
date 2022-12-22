@@ -56,7 +56,7 @@ void GLES3Texture::doInit(const TextureInfo & /*info*/) {
     _gpuTexture->samples = _info.samples;
     _gpuTexture->flags = _info.flags;
     _gpuTexture->size = _size;
-    _gpuTexture->isPowerOf2 = math::IsPowerOfTwo(_info.width) && math::IsPowerOfTwo(_info.height);
+    _gpuTexture->isPowerOf2 = math::isPowerOfTwo(_info.width) && math::isPowerOfTwo(_info.height);
     _gpuTexture->glTexture = static_cast<GLuint>(reinterpret_cast<size_t>(_info.externalRes));
 
     cmdFuncGLES3CreateTexture(GLES3Device::getInstance(), _gpuTexture);
@@ -123,6 +123,23 @@ void GLES3Texture::doResize(uint32_t width, uint32_t height, uint32_t size) {
         GLES3Device::getInstance()->getMemoryStatus().textureSize += size;
         CC_PROFILE_MEMORY_INC(Texture, size);
     }
+}
+
+uint32_t GLES3Texture::getGLTextureHandle() const noexcept {
+    const auto *gpuTexture = _gpuTexture;
+    if (!gpuTexture) {
+        return 0;
+    }
+
+    if (gpuTexture->glTexture) {
+        return gpuTexture->glTexture;
+    }
+
+    if (gpuTexture->glRenderbuffer) {
+        return gpuTexture->glRenderbuffer;
+    }
+
+    return 0;
 }
 
 ///////////////////////////// Swapchain Specific /////////////////////////////

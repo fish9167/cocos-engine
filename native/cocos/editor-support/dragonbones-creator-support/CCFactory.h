@@ -112,8 +112,6 @@ public:
         _dragonBonesInstance->render();
     }
 
-    virtual uint32_t getRenderOrder() const override { return 0; }
-
     /**
      * @note When script engine clean up is trigger,will stop dragonbones timer.
      */
@@ -240,6 +238,8 @@ public:
     DragonBones *getDragonBones() {
         return _dragonBonesInstance;
     }
+
+    DragonBonesData *getDragonBonesDataByUUID(const std::string &uuid);
 
     void removeTextureAtlasDataByIndex(const std::string &name, int textureIndex);
     void removeDragonBonesDataByUUID(const std::string &uuid, bool disposeData = true);

@@ -1,4 +1,4 @@
-import type { Node } from '../scene-graph';
+import type { Node } from '../../scene-graph';
 
 // export interface IArrayProxy {
 //     owner: any,
@@ -158,3 +158,13 @@ export function updateChildrenForDeserialize (node: Node) {
 //     });
 //     node._isChildrenRedefined = true;
 // }
+type EventType = string | number;
+export function ExtraEventMethods () {}
+
+ExtraEventMethods.prototype.once = function once <Callback extends (...any) => void> (type: EventType, callback: Callback, target?: any) {
+    return this.on(type, callback, target, true) as Callback;
+};
+
+ExtraEventMethods.prototype.targetOff = function targetOff (typeOrTarget: any) {
+    this.removeAll(typeOrTarget);
+};

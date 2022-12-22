@@ -47,9 +47,11 @@ Mat4::Mat4() {
     *this = IDENTITY;
 }
 
-Mat4::Mat4(float m11, float m12, float m13, float m14, float m21, float m22, float m23, float m24,
-           float m31, float m32, float m33, float m34, float m41, float m42, float m43, float m44) {
-    set(m11, m12, m13, m14, m21, m22, m23, m24, m31, m32, m33, m34, m41, m42, m43, m44);
+Mat4::Mat4(float m00, float m01, float m02, float m03,
+           float m10, float m11, float m12, float m13,
+           float m20, float m21, float m22, float m23,
+           float m30, float m31, float m32, float m33) {
+    set(m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33);
 }
 
 Mat4::Mat4(const float *mat) {
@@ -111,7 +113,7 @@ void Mat4::createLookAt(float eyePositionX, float eyePositionY, float eyePositio
 void Mat4::createPerspective(float fieldOfView, float aspectRatio, float zNearPlane, float zFarPlane,
                              bool isFieldOfViewY, float minClipZ, float projectionSignY, int orientation, Mat4 *dst) {
     CC_ASSERT(dst);
-    CC_ASSERT(zFarPlane != zNearPlane);
+    CC_ASSERT_NE(zFarPlane, zNearPlane);
     CC_ASSERT(fieldOfView != 0.0F);
 
     const float f = 1.0F / tanf(fieldOfView / 2.0F);
@@ -151,9 +153,9 @@ void Mat4::createOrthographicOffCenter(float left, float right, float bottom, fl
 
 void Mat4::createOrthographicOffCenter(float left, float right, float bottom, float top, float zNearPlane, float zFarPlane, float minClipZ, float projectionSignY, int orientation, Mat4 *dst) {
     CC_ASSERT(dst);
-    CC_ASSERT(right != left);
-    CC_ASSERT(top != bottom);
-    CC_ASSERT(zFarPlane != zNearPlane);
+    CC_ASSERT_NE(right, left);
+    CC_ASSERT_NE(top, bottom);
+    CC_ASSERT_NE(zFarPlane, zNearPlane);
 
     const ccstd::array<float, 4> &preTransform = PRE_TRANSFORMS[orientation];
     const float lr = 1.F / (left - right);
@@ -523,11 +525,8 @@ void Mat4::fromRTS(const Quaternion &rotation, const Vec3 &translation, const Ve
     dst->m[15] = 1;
 }
 
-void Mat4::toRTS(Quaternion &rotation, Vec3 &translation, Vec3 &scale, Mat4 *dst) {
-    if (dst == nullptr) {
-        return;
-    }
-    dst->decompose(&scale, &rotation, &translation);
+void Mat4::toRTS(const Mat4 &src, Quaternion *rotation, Vec3 *translation, Vec3 *scale) {
+    src.decompose(scale, rotation, translation);
 }
 
 bool Mat4::decompose(Vec3 *scale, Quaternion *rotation, Vec3 *translation) const {
@@ -953,24 +952,26 @@ void Mat4::scale(const Vec3 &s, Mat4 *dst) const {
     scale(s.x, s.y, s.z, dst);
 }
 
-void Mat4::set(float m11, float m12, float m13, float m14, float m21, float m22, float m23, float m24,
-               float m31, float m32, float m33, float m34, float m41, float m42, float m43, float m44) {
-    m[0] = m11;
-    m[1] = m21;
-    m[2] = m31;
-    m[3] = m41;
-    m[4] = m12;
-    m[5] = m22;
-    m[6] = m32;
-    m[7] = m42;
-    m[8] = m13;
-    m[9] = m23;
-    m[10] = m33;
-    m[11] = m43;
-    m[12] = m14;
-    m[13] = m24;
-    m[14] = m34;
-    m[15] = m44;
+void Mat4::set(float m00, float m01, float m02, float m03,
+               float m10, float m11, float m12, float m13,
+               float m20, float m21, float m22, float m23,
+               float m30, float m31, float m32, float m33) {
+    m[0] = m00;
+    m[1] = m10;
+    m[2] = m20;
+    m[3] = m30;
+    m[4] = m01;
+    m[5] = m11;
+    m[6] = m21;
+    m[7] = m31;
+    m[8] = m02;
+    m[9] = m12;
+    m[10] = m22;
+    m[11] = m32;
+    m[12] = m03;
+    m[13] = m13;
+    m[14] = m23;
+    m[15] = m33;
 }
 
 void Mat4::set(const float *mat) {
@@ -1001,21 +1002,6 @@ void Mat4::subtract(const Mat4 &m1, const Mat4 &m2, Mat4 *dst) {
 #else
     MathUtil::subtractMatrix(m1.m, m2.m, dst->m);
 #endif
-}
-
-void Mat4::transformVector(Vec3 *vector) const {
-    CC_ASSERT(vector);
-    transformVector(vector->x, vector->y, vector->z, 0.0F, vector);
-}
-
-void Mat4::transformVector(const Vec3 &vector, Vec3 *dst) const {
-    transformVector(vector.x, vector.y, vector.z, 0.0F, dst);
-}
-
-void Mat4::transformVector(float x, float y, float z, float w, Vec3 *dst) const {
-    CC_ASSERT(dst);
-
-    MathUtil::transformVec4(m, x, y, z, w, reinterpret_cast<float *>(dst));
 }
 
 void Mat4::transformVector(Vec4 *vector) const {
@@ -1062,6 +1048,10 @@ Mat4 Mat4::getTransposed() const {
     Mat4 mat(*this);
     mat.transpose();
     return mat;
+}
+
+bool Mat4::approxEquals(const Mat4 &v, float precision /* = CC_FLOAT_CMP_PRECISION */) const {
+    return math::isEqualF(m[0], v.m[0], precision) && math::isEqualF(m[1], v.m[1], precision) && math::isEqualF(m[2], v.m[2], precision) && math::isEqualF(m[3], v.m[3], precision) && math::isEqualF(m[4], v.m[4], precision) && math::isEqualF(m[5], v.m[5], precision) && math::isEqualF(m[6], v.m[6], precision) && math::isEqualF(m[7], v.m[7], precision) && math::isEqualF(m[8], v.m[8], precision) && math::isEqualF(m[9], v.m[9], precision) && math::isEqualF(m[10], v.m[10], precision) && math::isEqualF(m[11], v.m[11], precision) && math::isEqualF(m[12], v.m[12], precision) && math::isEqualF(m[13], v.m[13], precision) && math::isEqualF(m[14], v.m[14], precision) && math::isEqualF(m[15], v.m[15], precision);
 }
 
 const Mat4 Mat4::IDENTITY = Mat4(

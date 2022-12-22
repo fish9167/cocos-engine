@@ -95,11 +95,9 @@ DragonBonesData *CCFactory::loadDragonBonesData(const std::string &filePath, con
         } else {
             cc::Data cocos2dData;
             cc::FileUtils::getInstance()->getContents(fullpath, &cocos2dData);
-            const auto binary = (unsigned char *)malloc(sizeof(unsigned char) * cocos2dData.getSize());
-            memcpy(binary, cocos2dData.getBytes(), cocos2dData.getSize());
-            const auto data = parseDragonBonesData((char *)binary, name, scale);
-
-            return data;
+            uint8_t *binary = cocos2dData.takeBuffer();
+            // NOTE: binary is freed in DragonBonesData::_onClear
+            return parseDragonBonesData(reinterpret_cast<char *>(binary), name, scale);
         }
     }
 
@@ -120,16 +118,28 @@ DragonBonesData *CCFactory::parseDragonBonesDataByPath(const std::string &filePa
         if (cc::FileUtils::getInstance()->isFileExist(filePath)) {
             cc::Data cocos2dData;
             cc::FileUtils::getInstance()->getContents(fullpath, &cocos2dData);
-            const auto binary = (unsigned char *)malloc(sizeof(unsigned char) * cocos2dData.getSize());
-            memcpy(binary, cocos2dData.getBytes(), cocos2dData.getSize());
-
-            return parseDragonBonesData((char *)binary, name, scale);
+            uint8_t *binary = cocos2dData.takeBuffer();
+            // NOTE: binary is freed in DragonBonesData::_onClear
+            return parseDragonBonesData(reinterpret_cast<char *>(binary), name, scale);
         }
     } else {
         return parseDragonBonesData(filePath.c_str(), name, scale);
     }
 
     return nullptr;
+}
+
+DragonBonesData *CCFactory::getDragonBonesDataByUUID(const std::string &uuid) {
+    DragonBonesData *bonesData = nullptr;
+    for (auto it = _dragonBonesDataMap.begin(); it != _dragonBonesDataMap.end();) {
+        if (it->first.find(uuid) != std::string::npos) {
+            bonesData = it->second;
+            break;
+        } else {
+            it++;
+        }
+    }
+    return bonesData;
 }
 
 void CCFactory::removeDragonBonesDataByUUID(const std::string &uuid, bool disposeData) {

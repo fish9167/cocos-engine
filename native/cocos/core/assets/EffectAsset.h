@@ -33,9 +33,11 @@
 #include "base/Value.h"
 #include "core/Types.h"
 #include "core/assets/Asset.h"
+#include "engine/BaseEngine.h"
 #include "renderer/core/PassUtils.h"
 #include "renderer/gfx-base/GFXDef.h"
 #include "renderer/pipeline/Define.h"
+
 
 namespace cc {
 
@@ -43,12 +45,16 @@ using IPropertyHandleInfo = std::tuple<ccstd::string, uint32_t, gfx::Type>;
 
 using IPropertyValue = ccstd::optional<ccstd::variant<ccstd::vector<float>, ccstd::string>>;
 
+using IPropertyEditorValueType = ccstd::variant<ccstd::monostate, ccstd::string, bool, float, ccstd::vector<float>>;
+using IPropertyEditorInfo = ccstd::unordered_map<ccstd::string, IPropertyEditorValueType>;
+
 struct IPropertyInfo {
-    int32_t type;                                    // auto-extracted from shader
+    int32_t type{0};                                 // auto-extracted from shader
     ccstd::optional<IPropertyHandleInfo> handleInfo; // auto-generated from 'target'
     ccstd::optional<ccstd::hash_t> samplerHash;      // auto-generated from 'sampler'
     IPropertyValue value;                            // default value
     ccstd::optional<bool> linear;                    // whether to convert the input to linear space first before applying
+    IPropertyEditorInfo editor; // NOTE: used only by editor.
 };
 
 struct IPassInfoFull;
@@ -338,6 +344,7 @@ struct IPassStates {
     ccstd::optional<BlendStateInfo> blendState;
     ccstd::optional<gfx::DynamicStateFlags> dynamicStates;
     ccstd::optional<ccstd::string> phase;
+    ccstd::optional<ccstd::string> pass;
 
     IPassStates() = default;
     explicit IPassStates(const IPassInfoFull &o);
@@ -348,7 +355,7 @@ using PassOverrides = IPassStates;
 
 using PassPropertyInfoMap = ccstd::unordered_map<ccstd::string, IPropertyInfo>;
 
-struct IPassInfoFull final { //cjh } : public IPassInfo {
+struct IPassInfoFull final { // cjh } : public IPassInfo {
     // IPassStates
     ccstd::optional<int32_t> priority;
     ccstd::optional<gfx::PrimitiveMode> primitive;
@@ -361,7 +368,7 @@ struct IPassInfoFull final { //cjh } : public IPassInfo {
     // IPassInfo
     ccstd::string program; // auto-generated from 'vert' and 'frag'
     ccstd::optional<MacroRecord> embeddedMacros;
-    index_t propertyIndex{CC_INVALID_INDEX};
+    ccstd::optional<index_t> propertyIndex; // NOTE: needs to use ccstd::optional<> since jsb should return 'undefined' instead of '-1' to avoid wrong value checking logic.
     ccstd::optional<ccstd::string> switch_;
     ccstd::optional<PassPropertyInfoMap> properties;
 
@@ -399,7 +406,10 @@ struct IBlockInfo {
     uint32_t binding{UINT32_MAX};
     ccstd::string name;
     ccstd::vector<gfx::Uniform> members;
+
     gfx::ShaderStageFlags stageFlags{gfx::ShaderStageFlags::NONE};
+
+    ccstd::vector<ccstd::string> defines;
 };
 
 struct ISamplerTextureInfo {
@@ -408,6 +418,7 @@ struct ISamplerTextureInfo {
     gfx::Type type{gfx::Type::UNKNOWN};
     uint32_t count{0};
     gfx::ShaderStageFlags stageFlags{gfx::ShaderStageFlags::NONE};
+    ccstd::vector<ccstd::string> defines; // NOTE: used in Editor only
 };
 
 struct ITextureInfo {
@@ -465,9 +476,11 @@ struct IAttributeInfo {
 struct IDefineInfo {
     ccstd::string name;
     ccstd::string type;
-    ccstd::optional<ccstd::vector<int32_t>> range; //cjh number is float?  ?: number[];
+    ccstd::optional<ccstd::vector<int32_t>> range; // cjh number is float?  ?: number[];
     ccstd::optional<ccstd::vector<ccstd::string>> options;
     ccstd::optional<ccstd::string> defaultVal;
+    ccstd::optional<ccstd::vector<ccstd::string>> defines; // NOTE: it's only used in Editor
+    ccstd::optional<ccstd::unordered_map<ccstd::string, bool>> editor; // NOTE: it's only used in Editor
 };
 
 struct IBuiltin {
@@ -488,6 +501,17 @@ struct IBuiltins {
     IBuiltinInfo globals;
     IBuiltinInfo locals;
     BuiltinsStatisticsType statistics;
+};
+
+struct IDescriptorInfo {
+    uint32_t rate{0};
+    ccstd::vector<IBlockInfo> blocks;
+    ccstd::vector<ISamplerTextureInfo> samplerTextures;
+    ccstd::vector<ISamplerInfo> samplers;
+    ccstd::vector<ITextureInfo> textures;
+    ccstd::vector<IBufferInfo> buffers;
+    ccstd::vector<IImageInfo> images;
+    ccstd::vector<IInputAttachmentInfo> subpassInputs;
 };
 
 struct IShaderSource {
@@ -511,6 +535,7 @@ struct IShaderInfo {
     ccstd::vector<IBufferInfo> buffers;
     ccstd::vector<IImageInfo> images;
     ccstd::vector<IInputAttachmentInfo> subpassInputs;
+    // ccstd::vector<IDescriptorInfo> descriptors;
 
     const IShaderSource *getSource(const ccstd::string &version) const {
         if (version == "glsl1") return &glsl1;
@@ -582,6 +607,8 @@ public:
     bool validate() const override;
 
 protected:
+    BaseEngine::EngineStatusChange::EventID _engineEventId;
+
     static ccstd::vector<MacroRecord> doCombine(const ccstd::vector<MacroRecord> &cur, const IPreCompileInfo &info, IPreCompileInfo::iterator iter);
     static ccstd::vector<MacroRecord> generateRecords(const ccstd::string &key, const IPreCompileInfoValueType &value);
     static ccstd::vector<MacroRecord> insertInfoValue(const ccstd::vector<MacroRecord> &records,
@@ -617,7 +644,7 @@ public:
     ccstd::vector<IPreCompileInfo> _combinations;
     //
 protected:
-    static RegisteredEffectAssetMap effects; //cjh TODO: how to clear when game exits.
+    static RegisteredEffectAssetMap effects; // cjh TODO: how to clear when game exits.
     static bool layoutValid;
 
     CC_DISALLOW_COPY_MOVE_ASSIGN(EffectAsset);

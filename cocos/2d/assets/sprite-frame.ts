@@ -27,18 +27,15 @@
 
 import { ccclass } from 'cc.decorator';
 import { EDITOR, TEST, BUILD } from 'internal:constants';
-import { Color, Mat4, Rect, Size, Vec2, Vec3 } from '../../core/math';
-import { Asset } from '../../core/assets/asset';
-import { TextureBase } from '../../core/assets/texture-base';
-import { legacyCC } from '../../core/global-exports';
-import { ImageAsset, ImageSource } from '../../core/assets/image-asset';
-import { Texture2D } from '../../core/assets/texture-2d';
-import { errorID, warnID } from '../../core/platform/debug';
+import { Mat4, Rect, Size, Vec2, Vec3, Vec4, cclegacy, errorID, warnID, js } from '../../core';
+import { Asset } from '../../asset/assets/asset';
+import { TextureBase } from '../../asset/assets/texture-base';
+import { ImageAsset, ImageSource } from '../../asset/assets/image-asset';
+import { Texture2D } from '../../asset/assets/texture-2d';
 import { dynamicAtlasManager } from '../utils/dynamic-atlas/atlas-manager';
-import { js } from '../../core/utils/js';
 import { Mesh } from '../../3d/assets/mesh';
 import { createMesh } from '../../3d/misc';
-import { Attribute, AttributeName, Format, PrimitiveMode } from '../../core/gfx';
+import { Attribute, AttributeName, Format, PrimitiveMode } from '../../gfx';
 
 const INSET_LEFT = 0;
 const INSET_TOP = 1;
@@ -106,8 +103,8 @@ interface ISpriteFrameOriginal {
  */
 interface ISpriteFrameInitInfo {
     /**
-     * @en The texture of the sprite frame, could be [[TextureBase]]
-     * @zh 贴图对象资源，可以是 [[TextureBase]] 类型
+     * @en The texture of the sprite frame, could be `TextureBase`
+     * @zh 贴图对象资源，可以是 `TextureBase` 类型
      */
     texture?: TextureBase;
     /**
@@ -173,7 +170,7 @@ const temp_uvs: IUV[] = [{ u: 0, v: 0 }, { u: 0, v: 0 }, { u: 0, v: 0 }, { u: 0,
  *  2. Sliced 9 sprite frame
  *  3. Mesh sprite frame
  * It mainly contains:<br/>
- *  - texture: A [[TextureBase]] that will be used by render process<br/>
+ *  - texture: A `TextureBase` that will be used by render process<br/>
  *  - rectangle: A rectangle of the texture
  *  - Sliced 9 border insets: The distance of each side from the internal rect to the sprite frame rect
  *  - vertices: Vertex list for the mesh type sprite frame
@@ -187,7 +184,7 @@ const temp_uvs: IUV[] = [{ u: 0, v: 0 }, { u: 0, v: 0 }, { u: 0, v: 0 }, { u: 0,
  *  2. 九宫格精灵帧
  *  3. 网格精灵帧
  * 它主要包含下列数据：<br/>
- *  - 纹理：会被渲染流程使用的 [[TextureBase]] 资源。<br/>
+ *  - 纹理：会被渲染流程使用的 `TextureBase` 资源。<br/>
  *  - 矩形：在纹理中的矩形区域。
  *  - 九宫格信息：九宫格的内部矩形四个边距离 SpriteFrame 外部矩形的距离
  *  - 网格信息：网格类型精灵帧的所有顶点列表
@@ -357,6 +354,7 @@ export class SpriteFrame extends Asset {
         if (this._texture) {
             this._calculateUV();
         }
+        this._calcTrimmedBorder();
     }
 
     /**
@@ -376,6 +374,7 @@ export class SpriteFrame extends Asset {
         if (this._texture) {
             this._calculateUV();
         }
+        this._calcTrimmedBorder();
     }
 
     /**
@@ -391,6 +390,7 @@ export class SpriteFrame extends Asset {
 
     set offset (value) {
         this._offset.set(value);
+        this._calcTrimmedBorder();
     }
 
     /**
@@ -413,8 +413,8 @@ export class SpriteFrame extends Asset {
     }
 
     /**
-     * @en The texture of the sprite frame, could be [[TextureBase]]
-     * @zh 贴图对象资源，可以是 [[TextureBase]] 类型
+     * @en The texture of the sprite frame, could be `TextureBase`
+     * @zh 贴图对象资源，可以是 `TextureBase` 类型
      */
     get texture () {
         return this._texture;
@@ -535,6 +535,13 @@ export class SpriteFrame extends Asset {
     }
 
     /**
+     * @internal
+     */
+    get trimmedBorder () {
+        return this._trimmedBorder;
+    }
+
+    /**
      * @en Vertex list for the mesh type sprite frame
      * @zh 网格类型精灵帧的所有顶点列表
      */
@@ -556,6 +563,8 @@ export class SpriteFrame extends Asset {
 
     // the location of the sprite on rendering texture
     protected _rect = new Rect();
+
+    protected _trimmedBorder = new Vec4();
 
     // for trimming
     protected _offset = new Vec2();
@@ -823,6 +832,7 @@ export class SpriteFrame extends Asset {
         if (calUV && this.texture) {
             this._calculateUV();
         }
+        this._calcTrimmedBorder();
     }
 
     /**
@@ -853,6 +863,23 @@ export class SpriteFrame extends Asset {
         }
 
         return true;
+    }
+
+    private _calcTrimmedBorder () {
+        const ow = this._originalSize.width;
+        const oh = this._originalSize.height;
+        const rw = this._rect.width;
+        const rh = this._rect.height;
+        const halfTrimmedWidth = (ow - rw) * 0.5;
+        const halfTrimmedHeight = (oh - rh) * 0.5;
+        // left
+        this._trimmedBorder.x = this._offset.x + halfTrimmedWidth;
+        // right
+        this._trimmedBorder.y = this._offset.x - halfTrimmedWidth;
+        // bottom
+        this._trimmedBorder.z = this._offset.y + halfTrimmedHeight;
+        // top
+        this._trimmedBorder.w = this._offset.y - halfTrimmedHeight;
     }
 
     /**
@@ -1397,13 +1424,16 @@ export class SpriteFrame extends Asset {
 
         if (isReset) {
             this.reset(config);
-            this.onLoaded();
         }
 
         this._checkPackable();
         if (this._mesh) {
             this._updateMesh();
         }
+    }
+
+    public onLoaded () {
+        this._calcTrimmedBorder();
     }
 
     public initDefault (uuid?: string) {
@@ -1553,4 +1583,4 @@ export class SpriteFrame extends Asset {
     }
 }
 
-legacyCC.SpriteFrame = SpriteFrame;
+cclegacy.SpriteFrame = SpriteFrame;

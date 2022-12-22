@@ -135,7 +135,7 @@ void SkinningModel::updateTransform(uint32_t stamp) {
         Vec3::min(v3Min, v31, &v3Min);
         Vec3::max(v3Max, v32, &v3Max);
     }
-    if (_modelBounds->isValid() && _worldBounds) {
+    if (_modelBounds && _modelBounds->isValid() && _worldBounds) {
         geometry::AABB::fromPoints(v3Min, v3Max, _modelBounds);
         _modelBounds->transform(root->getWorldMatrix(), _worldBounds);
         _worldBoundsDirty = true;
@@ -208,13 +208,14 @@ void SkinningModel::updateLocalDescriptors(index_t submodelIdx, gfx::DescriptorS
     }
 }
 
-void SkinningModel::updateInstancedAttributes(const ccstd::vector<gfx::Attribute> &attributes, scene::Pass *pass) {
+void SkinningModel::updateInstancedAttributes(const ccstd::vector<gfx::Attribute> &attributes, scene::SubModel *subModel) {
+    auto *pass = subModel->getPass(0);
     if (pass->getBatchingScheme() != scene::BatchingSchemes::NONE) {
         // TODO(holycanvas): #9203 better to print the complete path instead of only the current node
         debug::warnID(3936, getNode()->getName());
         CC_LOG_WARNING("pass batchingScheme is none, %s", getNode()->getName().c_str());
     }
-    Super::updateInstancedAttributes(attributes, pass);
+    Super::updateInstancedAttributes(attributes, subModel);
 }
 
 void SkinningModel::ensureEnoughBuffers(uint32_t count) {

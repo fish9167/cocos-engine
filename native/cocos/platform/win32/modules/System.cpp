@@ -102,6 +102,9 @@ System::LanguageType System::getCurrentLanguage() const {
         case LANG_BULGARIAN:
             ret = LanguageType::BULGARIAN;
             break;
+        case LANG_HINDI:
+            ret = LanguageType::HINDI;
+            break;
     }
 
     return ret;
@@ -112,10 +115,10 @@ ccstd::string System::getCurrentLanguageCode() const {
     const LCID locale_id = MAKELCID(lid, SORT_DEFAULT);
     int length = GetLocaleInfoA(locale_id, LOCALE_SISO639LANGNAME, nullptr, 0);
 
-    char *tempCode = ccnew char[length];
+    char *tempCode = reinterpret_cast<char *>(CC_MALLOC(length));
     GetLocaleInfoA(locale_id, LOCALE_SISO639LANGNAME, tempCode, length);
-    ccstd::string code = tempCode;
-    delete tempCode;
+    ccstd::string code(tempCode);
+    CC_FREE(tempCode);
 
     return code;
 }

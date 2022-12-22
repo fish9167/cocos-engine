@@ -325,10 +325,12 @@ struct GLES3GPURenderPass {
     ColorAttachmentList colorAttachments;
     DepthStencilAttachment depthStencilAttachment;
     SubpassInfoList subpasses;
+    SubpassDependencyList dependencies;
 
     ccstd::vector<AttachmentStatistics> statistics; // per attachment
 
-    ccstd::vector<GLES3GPUGeneralBarrier> barriers; // per subpass
+    ccstd::vector<GLES3GPUGeneralBarrier> subpassBarriers; // per subpass
+    GLES3GPUGeneralBarrier blockBarrier;
 };
 
 class GLES3GPUFramebufferCacheMap;
@@ -610,7 +612,7 @@ public:
 
             GLenum status;
             GL_CHECK(status = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER));
-            CC_ASSERT(status == GL_FRAMEBUFFER_COMPLETE);
+            CC_ASSERT_EQ(status, GL_FRAMEBUFFER_COMPLETE);
 
             cacheMap[glResource][mipLevel].glFramebuffer = glFramebuffer;
         }

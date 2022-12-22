@@ -57,6 +57,8 @@ namespace se {
 
 class ObjectWrap {
 public:
+    static constexpr uint16_t MAGIC_CLASS_ID_JSB = 0x1234;
+
     ObjectWrap();
     ~ObjectWrap();
 
@@ -86,6 +88,8 @@ public:
          * DO NOT CALL THIS FROM DESTRUCTOR
          */
     void unref();
+
+    static void setIsolateValid(bool valid);
 
 private:
     static void weakCallback(const v8::WeakCallbackInfo<Object> &data);

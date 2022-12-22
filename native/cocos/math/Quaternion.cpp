@@ -331,9 +331,9 @@ void Quaternion::toEuler(const Quaternion &q, bool outerZ, Vec3 *out) {
         heading = atan2(2 * y * w - 2 * x * z, 1 - 2 * sqy - 2 * sqz) * r2d;
         attitude = asin(2 * test) * r2d;
         if (outerZ) {
-            bank = static_cast<float>(-180.F * math::Sgn(bank + 1e-6) + bank);
-            heading = static_cast<float>(-180.F * math::Sgn(heading + 1e-6) + heading);
-            attitude = static_cast<float>(180.F * math::Sgn(attitude + 1e-6) - attitude);
+            bank = static_cast<float>(-180.F * math::sgn(bank + 1e-6) + bank);
+            heading = static_cast<float>(-180.F * math::sgn(heading + 1e-6) + heading);
+            attitude = static_cast<float>(180.F * math::sgn(attitude + 1e-6) - attitude);
         }
     }
     out->x = bank;
@@ -360,7 +360,8 @@ void Quaternion::fromMat3(const Mat3 &m, Quaternion *out) {
         out->y = (m06 - m02) * s;
         out->z = (m01 - m03) * s;
     } else if ((m00 > m04) && (m00 > m08)) {
-        const float s = 2.F * sqrtf(1.F + m04 - m00 - m08);
+        //m00 - m04 - m08 consistent with ts engine, otherwise y-axis rotation greater than 90 degrees will not get the correct result
+        const float s = 2.F * sqrtf(1.F + m00 - m04 - m08);
 
         out->w = (m05 - m07) / s;
         out->x = 0.25F * s;

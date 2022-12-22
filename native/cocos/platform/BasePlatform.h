@@ -28,7 +28,7 @@
 #include "base/Log.h"
 #include "base/Macros.h"
 
-#include "bindings/event/EventDispatcher.h"
+#include "engine/EngineEvents.h"
 #include "platform/interfaces/modules/ISystem.h"
 
 #include <algorithm>
@@ -38,6 +38,7 @@
 namespace cc {
 
 class OSInterface;
+class ISystemWindow;
 
 class CC_DLL BasePlatform {
 public:
@@ -76,27 +77,6 @@ public:
     virtual OSType getOSType() const = 0;
 
     /**
-     * @brief Set event handling callback function.
-     */
-    using HandleEventCallback = std::function<bool(const OSEvent &)>;
-
-    virtual void setHandleEventCallback(HandleEventCallback cb) = 0;
-
-    /**
-     * @brief Set touch event handling callback function.
-     */
-    using HandleTouchEventCallback = std::function<bool(const TouchEvent &)>;
-    virtual void setHandleTouchEventCallback(HandleTouchEventCallback cb) = 0;
-
-    /**
-     * @brief Set default event handling callback function.
-     */
-    virtual void setHandleDefaultEventCallback(HandleEventCallback cb) = 0;
-    /**
-     * @brief Default event handling.
-     */
-    virtual void handleDefaultEvent(const OSEvent &ev) = 0;
-    /**
      * @brief Get the SDK version for Android.Other systems also have sdk versions, 
               but they are not currently used.
      */
@@ -130,7 +110,18 @@ public:
                 return intf;
             }
         }
-        CC_ASSERT(false);
+        return nullptr;
+    }
+
+    template <class T>
+    std::enable_if_t<std::is_base_of<OSInterface, T>::value, T *>
+    getInterface() {
+        for (const auto &it : _osInterfaces) {
+            T *intf = dynamic_cast<T *>(it.get());
+            if (intf) {
+                return intf;
+            }
+        }
         return nullptr;
     }
 
@@ -138,7 +129,7 @@ public:
      * @brief Registration system interface.
      */
     bool registerInterface(const OSInterface::Ptr &osInterface) {
-        CC_ASSERT(osInterface != nullptr);
+        CC_ASSERT_NOT_NULL(osInterface);
         auto it = std::find(_osInterfaces.begin(), _osInterfaces.end(), osInterface);
         if (it != _osInterfaces.end()) {
             CC_LOG_WARNING("Duplicate registration interface");
@@ -151,7 +142,7 @@ public:
      * @brief Unregistration system interface.
      */
     void unregisterInterface(const OSInterface::Ptr &osInterface) {
-        CC_ASSERT(osInterface != nullptr);
+        CC_ASSERT_NOT_NULL(osInterface);
         auto it = std::find(_osInterfaces.begin(), _osInterfaces.end(), osInterface);
         if (it != _osInterfaces.end()) {
             CC_LOG_WARNING("Interface is not registrated");
@@ -163,6 +154,8 @@ public:
     void unregisterAllInterfaces() {
         _osInterfaces.clear();
     }
+
+    virtual ISystemWindow *createNativeWindow(uint32_t windowId, void *externalHandle) = 0;
 
 private:
     static BasePlatform *createDefaultPlatform();

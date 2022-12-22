@@ -30,21 +30,14 @@
  */
 // clang-format off
 #pragma once
-#include <functional>
+#include "cocos/base/std/hash/hash.h"
 #include "cocos/base/std/variant.h"
-#include "cocos/renderer/gfx-base/GFXDef-common.h"
 #include "cocos/renderer/pipeline/custom/RenderCommonFwd.h"
 
 namespace cc {
 
 namespace render {
 
-enum class DescriptorTypeOrder;
-
-struct Descriptor;
-struct DescriptorBlock;
-struct DescriptorBlockFlattened;
-struct DescriptorBlockIndex;
 struct DescriptorDB;
 struct RenderStageTag;
 struct RenderPhaseTag;
@@ -61,6 +54,10 @@ struct DescriptorBlockData;
 struct DescriptorSetLayoutData;
 struct DescriptorSetData;
 struct PipelineLayoutData;
+struct ShaderBindingData;
+struct ShaderLayoutData;
+struct TechniqueData;
+struct EffectData;
 struct ShaderProgramData;
 struct RenderStageData;
 struct RenderPhaseData;
@@ -70,13 +67,13 @@ struct LayoutGraphData;
 
 } // namespace cc
 
-namespace std {
+namespace ccstd {
 
 template <>
 struct hash<cc::render::NameLocalID> {
-    size_t operator()(const cc::render::NameLocalID& v) const noexcept;
+    hash_t operator()(const cc::render::NameLocalID& val) const noexcept;
 };
 
-}
+} // namespace ccstd
 
 // clang-format on

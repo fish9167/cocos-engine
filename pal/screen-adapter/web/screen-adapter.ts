@@ -119,11 +119,16 @@ class ScreenAdapter extends EventTarget {
     }
 
     public get safeAreaEdge (): SafeAreaEdge {
+        const _top = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--safe-top') || '0');
+        const _bottom = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom') || '0');
+        const _left = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--safe-left') || '0');
+        const _right = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--safe-right') || '0');
+
         return {
-            top: 0,
-            bottom: 0,
-            left: 0,
-            right: 0,
+            top: _top,
+            bottom: _bottom,
+            left: _left,
+            right: _right,
         };
     }
     public get isProportionalToFrame (): boolean {
@@ -152,6 +157,7 @@ class ScreenAdapter extends EventTarget {
     private _orientationChangeTimeoutId = -1;
     private _cachedFrameSize = new Size(0, 0); // cache before enter fullscreen.
     private _exactFitScreen = false;
+    private _isHeadlessMode = false;
     private _fn = {} as IScreenFunctionName;
     // Function mapping for cross browser support
     private _fnGroup = [
@@ -232,6 +238,9 @@ class ScreenAdapter extends EventTarget {
         }
     }
     private get _windowType (): WindowType {
+        if (this._isHeadlessMode) {
+            return WindowType.Unknown;
+        }
         if (this.isFullScreen) {
             return WindowType.Fullscreen;
         }
@@ -293,6 +302,7 @@ class ScreenAdapter extends EventTarget {
         this._cbToUpdateFrameBuffer = cbToRebuildFrameBuffer;
         this.orientation = orientationMap[options.configOrientation];
         this._exactFitScreen = options.exactFitScreen;
+        this._isHeadlessMode = options.isHeadlessMode;
         this._resizeFrame();
     }
 
@@ -350,7 +360,7 @@ class ScreenAdapter extends EventTarget {
                 const dpr = window.devicePixelRatio;
                 // NOTE: some browsers especially on iPhone doesn't support MediaQueryList
                 window.matchMedia(`(resolution: ${dpr}dppx)`)?.addEventListener?.('change', () => {
-                    this.emit('window-resize');
+                    this.emit('window-resize', this.windowSize.width, this.windowSize.height);
                     updateDPRChangeListener();
                 }, { once: true });
             };
@@ -366,13 +376,13 @@ class ScreenAdapter extends EventTarget {
                 }
                 this._updateFrameState();
                 this._resizeFrame();
-                this.emit('orientation-change');
+                this.emit('orientation-change', this.windowSize.width, this.windowSize.height);
                 this._orientationChangeTimeoutId = -1;
             }, EVENT_TIMEOUT);
         });
         document.addEventListener(this._fn.fullscreenchange, () => {
             this._onFullscreenChange?.();
-            this.emit('fullscreen-change');
+            this.emit('fullscreen-change', this.windowSize.width, this.windowSize.height);
         });
     }
     private _convertToSizeInCssPixels (size: Size) {
@@ -515,7 +525,7 @@ class ScreenAdapter extends EventTarget {
             || this._cachedFrameStyle.height !== this._gameFrame.style.height
             || this._cachedContainerStyle.width !== this._gameContainer.style.width
             || this._cachedContainerStyle.height !== this._gameContainer.style.height)) {
-            this.emit('window-resize');
+            this.emit('window-resize', this.windowSize.width, this.windowSize.height);
 
             // Update Cache
             this._cachedFrameStyle.width = this._gameFrame.style.width;

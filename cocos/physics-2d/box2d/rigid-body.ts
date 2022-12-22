@@ -3,12 +3,12 @@ import { IRigidBody2D } from '../spec/i-rigid-body';
 import { RigidBody2D } from '../framework/components/rigid-body-2d';
 import { PhysicsSystem2D } from '../framework/physics-system';
 import { b2PhysicsWorld } from './physics-world';
-import { Vec2, toRadian, Vec3, Quat, IVec2Like, toDegree, game } from '../../core';
+import { Vec2, toRadian, Vec3, IVec2Like, toDegree } from '../../core';
 import { PHYSICS_2D_PTM_RATIO, ERigidBody2DType } from '../framework/physics-types';
 
-import { Node } from '../../core/scene-graph/node';
+import { Node } from '../../scene-graph/node';
 import { Collider2D } from '../framework';
-import { NodeEventType } from '../../core/scene-graph/node-event';
+import { NodeEventType } from '../../scene-graph/node-event';
 
 const tempVec3 = new Vec3();
 
@@ -58,17 +58,7 @@ export class b2RigidBody2D implements IRigidBody2D {
         this.setActive(false);
     }
 
-    _registerNodeEvents () {
-        const node = this.rigidBody.node;
-        node.on(NodeEventType.TRANSFORM_CHANGED, this._onNodeTransformChanged, this);
-    }
-
-    _unregisterNodeEvents () {
-        const node = this.rigidBody.node;
-        node.off(NodeEventType.TRANSFORM_CHANGED, this._onNodeTransformChanged, this);
-    }
-
-    _onNodeTransformChanged (type) {
+    nodeTransformChanged (type) {
         if (PhysicsSystem2D.instance.stepping) {
             return;
         }
@@ -92,8 +82,6 @@ export class b2RigidBody2D implements IRigidBody2D {
             return;
         }
 
-        this._registerNodeEvents();
-
         (PhysicsSystem2D.instance.physicsWorld as b2PhysicsWorld).addBody(this);
 
         this._inited = true;
@@ -103,7 +91,6 @@ export class b2RigidBody2D implements IRigidBody2D {
         if (!this._inited) return;
 
         (PhysicsSystem2D.instance.physicsWorld as b2PhysicsWorld).removeBody(this);
-        this._unregisterNodeEvents();
 
         this._inited = false;
     }
@@ -122,6 +109,11 @@ export class b2RigidBody2D implements IRigidBody2D {
 
         const b2Rotation = b2body.GetAngle();
         b2body.SetAngularVelocity((this._animatedAngle - b2Rotation) * timeStep);
+    }
+
+    syncSceneToPhysics () {
+        const dirty = this._rigidBody.node.hasChangedFlags;
+        if (dirty) { this.nodeTransformChanged(dirty); }
     }
 
     syncPositionToPhysics (enableAnimated = false) {

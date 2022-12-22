@@ -90,12 +90,14 @@ void ForwardStage::destroy() {
     CC_SAFE_DELETE(_batchedQueue);
     CC_SAFE_DELETE(_instancedQueue);
     CC_SAFE_DELETE(_additiveLightQueue);
-    CC_SAFE_DELETE(_planarShadowQueue);
+    CC_SAFE_DESTROY_AND_DELETE(_planarShadowQueue);
     CC_SAFE_DELETE(_uiPhase);
     RenderStage::destroy();
 }
 
 void ForwardStage::dispenseRenderObject2Queues() {
+    if (!_pipeline->isRenderQueueReset()) return;
+
     _instancedQueue->clear();
     _batchedQueue->clear();
 
@@ -119,7 +121,7 @@ void ForwardStage::dispenseRenderObject2Queues() {
                 if (pass->getPhase() != _phaseID) continue;
                 if (pass->getBatchingScheme() == scene::BatchingSchemes::INSTANCING) {
                     auto *instancedBuffer = pass->getInstancedBuffer();
-                    instancedBuffer->merge(model, subModel, passIdx);
+                    instancedBuffer->merge(subModel, passIdx);
                     _instancedQueue->add(instancedBuffer);
                 } else if (pass->getBatchingScheme() == scene::BatchingSchemes::VB_MERGING) {
                     auto *batchedBuffer = pass->getBatchedBuffer();
@@ -169,6 +171,37 @@ void ForwardStage::render(scene::Camera *camera) {
         }
         _clearColors[0].w = camera->getClearColor().w;
         // color
+// for inserting ar background before forward stage
+#if CC_USE_AR_MODULE
+        framegraph::RenderTargetAttachment::Descriptor colorAttachmentInfo;
+        colorAttachmentInfo.usage = framegraph::RenderTargetAttachment::Usage::COLOR;
+        colorAttachmentInfo.clearColor = _clearColors[0];
+        colorAttachmentInfo.loadOp = gfx::LoadOp::CLEAR;
+        auto clearFlags = static_cast<gfx::ClearFlagBit>(camera->getClearFlag());
+
+        data.outputTex = framegraph::TextureHandle(builder.readFromBlackboard(RenderPipeline::fgStrHandleOutColorTexture));
+        if(!data.outputTex.isValid()) {
+            framegraph::Texture::Descriptor colorTexInfo;
+            colorTexInfo.format = sceneData->isHDR() ? gfx::Format::RGBA16F : gfx::Format::RGBA8;
+            colorTexInfo.usage = gfx::TextureUsageBit::COLOR_ATTACHMENT;
+            colorTexInfo.width = static_cast<uint32_t>(static_cast<float>(camera->getWindow()->getWidth()) * shadingScale);
+            colorTexInfo.height = static_cast<uint32_t>(static_cast<float>(camera->getWindow()->getHeight()) * shadingScale);
+            if (shadingScale != 1.F) {
+                colorTexInfo.usage |= gfx::TextureUsageBit::TRANSFER_SRC;
+            }
+            data.outputTex = builder.create(RenderPipeline::fgStrHandleOutColorTexture, colorTexInfo);
+
+            if (!hasFlag(clearFlags, gfx::ClearFlagBit::COLOR)) {
+                if (hasFlag(clearFlags, static_cast<gfx::ClearFlagBit>(skyboxFlag))) {
+                    colorAttachmentInfo.loadOp = gfx::LoadOp::DISCARD;
+                } else {
+                    colorAttachmentInfo.loadOp = gfx::LoadOp::LOAD;
+                }
+            }
+        } else {
+            colorAttachmentInfo.loadOp = gfx::LoadOp::LOAD;
+        }
+#else
         framegraph::Texture::Descriptor colorTexInfo;
         colorTexInfo.format = sceneData->isHDR() ? gfx::Format::RGBA16F : gfx::Format::RGBA8;
         colorTexInfo.usage = gfx::TextureUsageBit::COLOR_ATTACHMENT;
@@ -190,6 +223,8 @@ void ForwardStage::render(scene::Camera *camera) {
                 colorAttachmentInfo.loadOp = gfx::LoadOp::LOAD;
             }
         }
+#endif
+
         colorAttachmentInfo.beginAccesses = colorAttachmentInfo.endAccesses = gfx::AccessFlagBit::COLOR_ATTACHMENT_WRITE;
 
         data.outputTex = builder.write(data.outputTex, colorAttachmentInfo);
@@ -210,9 +245,11 @@ void ForwardStage::render(scene::Camera *camera) {
         depthAttachmentInfo.clearStencil = camera->getClearStencil();
         depthAttachmentInfo.beginAccesses = gfx::AccessFlagBit::DEPTH_STENCIL_ATTACHMENT_WRITE;
         depthAttachmentInfo.endAccesses = gfx::AccessFlagBit::DEPTH_STENCIL_ATTACHMENT_WRITE;
+#if !CC_USE_AR_MODULE
         if (static_cast<gfx::ClearFlagBit>(clearFlags & gfx::ClearFlagBit::DEPTH_STENCIL) != gfx::ClearFlagBit::DEPTH_STENCIL && (!hasFlag(clearFlags, gfx::ClearFlagBit::DEPTH) || !hasFlag(clearFlags, gfx::ClearFlagBit::STENCIL))) {
             depthAttachmentInfo.loadOp = gfx::LoadOp::LOAD;
         }
+#endif
         data.depth = builder.create(RenderPipeline::fgStrHandleOutDepthTexture, depthTexInfo);
         data.depth = builder.write(data.depth, depthAttachmentInfo);
         builder.writeToBlackboard(RenderPipeline::fgStrHandleOutDepthTexture, data.depth);

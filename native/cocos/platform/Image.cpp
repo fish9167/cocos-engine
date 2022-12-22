@@ -30,6 +30,7 @@
 #include <cstring>
 #include "base/Config.h" // CC_USE_JPEG, CC_USE_WEBP
 #include "base/std/container/string.h"
+#include "gfx-base/GFXDef-common.h"
 
 #if CC_USE_JPEG
     #include "jpeg/jpeglib.h"
@@ -54,6 +55,7 @@ extern "C" {
 }
 
 #include "base/astc.h"
+#include "base/Compressed.h"
 
 #if CC_USE_WEBP
     #include "webp/decode.h"
@@ -277,7 +279,7 @@ bool Image::initWithImageFile(const ccstd::string &path) {
     //    _filePath = FileUtils::getInstance()->fullPathForFilename(path);
     _filePath = path;
 
-    Data data = FileUtils::getInstance()->getDataFromFile(_filePath);
+    const Data data = FileUtils::getInstance()->getDataFromFile(_filePath);
 
     if (!data.isNull()) {
         ret = initWithImageData(data.getBytes(), data.getSize());
@@ -286,9 +288,8 @@ bool Image::initWithImageFile(const ccstd::string &path) {
     return ret;
 }
 
-bool Image::initWithImageData(const unsigned char *data, uint32_t dataLen) {
+bool Image::initWithImageData(const unsigned char *data, uint32_t dataLen) {    //NOLINT(misc-no-recursion)
     bool ret = false;
-
     do {
         CC_BREAK_IF(!data || dataLen <= 0);
 
@@ -331,6 +332,9 @@ bool Image::initWithImageData(const unsigned char *data, uint32_t dataLen) {
             case Format::ASTC:
                 ret = initWithASTCData(unpackedData, unpackedLen);
                 break;
+            case Format::COMPRESSED:
+                ret = initWithCompressedMipsData(unpackedData, unpackedLen);
+                break;
             default:
                 break;
         }
@@ -363,6 +367,10 @@ bool Image::isEtc2(const unsigned char *data, uint32_t /*dataLen*/) {
 
 bool Image::isASTC(const unsigned char *data, uint32_t /*dataLen*/) {
     return astcIsValid(const_cast<astc_byte *>(data));
+}
+
+bool Image::isCompressed(const unsigned char *data, uint32_t /*dataLen*/) {
+    return compressedIsValid(data);
 }
 
 bool Image::isJpg(const unsigned char *data, uint32_t dataLen) {
@@ -418,6 +426,9 @@ Image::Format Image::detectFormat(const unsigned char *data, uint32_t dataLen) {
     }
     if (isASTC(data, dataLen)) {
         return Format::ASTC;
+    }
+    if (isCompressed(data, dataLen)) {
+        return Format::COMPRESSED;
     }
     return Format::UNKNOWN;
 }
@@ -678,13 +689,11 @@ bool Image::initWithPngData(const unsigned char *data, uint32_t dataLen) {
                 break;
         }
 
-        // read png data
-        png_size_t rowbytes;
         auto *rowPointers = static_cast<png_bytep *>(malloc(sizeof(png_bytep) * _height));
 
-        rowbytes = png_get_rowbytes(pngPtr, infoPtr);
+        const png_size_t rowBytes = png_get_rowbytes(pngPtr, infoPtr);
 
-        _dataLen = static_cast<uint32_t>(rowbytes * _height);
+        _dataLen = static_cast<uint32_t>(rowBytes * _height);
         _data = static_cast<unsigned char *>(malloc(_dataLen * sizeof(unsigned char)));
         if (!_data) {
             if (rowPointers != nullptr) {
@@ -694,7 +703,7 @@ bool Image::initWithPngData(const unsigned char *data, uint32_t dataLen) {
         }
 
         for (int i = 0; i < _height; ++i) {
-            rowPointers[i] = _data + i * rowbytes;
+            rowPointers[i] = _data + i * rowBytes;
         }
         png_read_image(pngPtr, rowPointers);
         png_read_end(pngPtr, nullptr);
@@ -714,9 +723,6 @@ bool Image::initWithPngData(const unsigned char *data, uint32_t dataLen) {
 }
 
 bool Image::initWithPVRv2Data(const unsigned char *data, uint32_t dataLen) {
-    int width = 0;
-    int height = 0;
-
     //Cast first sizeof(PVRTexHeader) bytes of data stream as PVRTexHeader
     const auto *header = static_cast<const PVRv2TexHeader *>(static_cast<const void *>(data));
 
@@ -727,7 +733,7 @@ bool Image::initWithPVRv2Data(const unsigned char *data, uint32_t dataLen) {
 
     unsigned int flags = CC_SWAP_INT32_LITTLE_TO_HOST(header->flags);
     auto formatFlags = static_cast<PVR2TexturePixelFormat>(flags & PVR_TEXTURE_FLAG_TYPE_MASK);
-    bool flipped = (flags & static_cast<unsigned int>(PVR2TextureFlag::VERTICAL_FLIP)) != 0;
+    const bool flipped = (flags & static_cast<unsigned int>(PVR2TextureFlag::VERTICAL_FLIP)) != 0;
     if (flipped) {
         CC_LOG_DEBUG("initWithPVRv2Data: WARNING: Image is flipped. Regenerate it using PVRTexTool");
     }
@@ -737,7 +743,7 @@ bool Image::initWithPVRv2Data(const unsigned char *data, uint32_t dataLen) {
         return false;
     }
 
-    auto it = V2_PIXEL_FORMATHASH.find(formatFlags);
+    const auto it = V2_PIXEL_FORMATHASH.find(formatFlags);
     if (it == V2_PIXEL_FORMATHASH.end()) {
         CC_LOG_DEBUG("initWithPVRv2Data: WARNING: Unsupported PVR Pixel Format: 0x%02X. Re-encode it with a OpenGL pixel format variant", (int)formatFlags);
         return false;
@@ -746,14 +752,14 @@ bool Image::initWithPVRv2Data(const unsigned char *data, uint32_t dataLen) {
     _renderFormat = it->second;
 
     //Get size of mipmap
-    _width = CC_SWAP_INT32_LITTLE_TO_HOST(header->width);
-    _height = CC_SWAP_INT32_LITTLE_TO_HOST(header->height);
+    _width = static_cast<int>(CC_SWAP_INT32_LITTLE_TO_HOST(header->width));
+    _height = static_cast<int>(CC_SWAP_INT32_LITTLE_TO_HOST(header->height));
     _isCompressed = true;
 
     //Move by size of header
     _dataLen = dataLen - sizeof(PVRv2TexHeader);
     _data = static_cast<unsigned char *>(malloc(_dataLen * sizeof(unsigned char)));
-    memcpy(_data, const_cast<unsigned char *>(data) + sizeof(PVRv2TexHeader), _dataLen);
+    memcpy(_data, data + sizeof(PVRv2TexHeader), _dataLen);
 
     return true;
 }
@@ -780,7 +786,7 @@ bool Image::initWithPVRv3Data(const unsigned char *data, uint32_t dataLen) {
         return false;
     }
 
-    auto it = V3_PIXEL_FORMATHASH.find(pixelFormat);
+    const auto it = V3_PIXEL_FORMATHASH.find(pixelFormat);
     if (it == V3_PIXEL_FORMATHASH.end()) {
         CC_LOG_DEBUG("initWithPVRv3Data: WARNING: Unsupported PVR Pixel Format: 0x%016llX. Re-encode it with a OpenGL pixel format variant",
                      static_cast<unsigned long long>(pixelFormat));
@@ -790,13 +796,13 @@ bool Image::initWithPVRv3Data(const unsigned char *data, uint32_t dataLen) {
     _renderFormat = it->second;
 
     // sizing
-    _width = CC_SWAP_INT32_LITTLE_TO_HOST(header->width);
-    _height = CC_SWAP_INT32_LITTLE_TO_HOST(header->height);
+    _width = static_cast<int>(CC_SWAP_INT32_LITTLE_TO_HOST(header->width));
+    _height = static_cast<int>(CC_SWAP_INT32_LITTLE_TO_HOST(header->height));
     _isCompressed = true;
 
     _dataLen = dataLen - (sizeof(PVRv3TexHeader) + header->metadataLength);
     _data = static_cast<unsigned char *>(malloc(_dataLen * sizeof(unsigned char)));
-    memcpy(_data, static_cast<const unsigned char *>(data) + sizeof(PVRv3TexHeader) + header->metadataLength, _dataLen);
+    memcpy(_data, data + sizeof(PVRv3TexHeader) + header->metadataLength, _dataLen);
 
     return true;
 }
@@ -873,13 +879,60 @@ bool Image::initWithASTCData(const unsigned char *data, uint32_t dataLen) {
 
     _dataLen = dataLen - ASTC_HEADER_SIZE;
     _data = static_cast<unsigned char *>(malloc(_dataLen * sizeof(unsigned char)));
-    memcpy(_data, static_cast<const unsigned char *>(data) + ASTC_HEADER_SIZE, _dataLen);
-    // if (_data == nullptr) {
-    //     CCLOG("initWithASTCData: ERROR: Image _data is null!");
-    //     return false;
-    // }
+    memcpy(_data, data + ASTC_HEADER_SIZE, _dataLen);
 
     return true;
+}
+
+bool Image::initWithCompressedMipsData(const unsigned char *data, uint32_t /*dataLen*/) {   //NOLINT(misc-no-recursion)
+    //check the data
+    if (!compressedIsValid(data)) {
+        return false;
+    }
+
+    // unpack compressed chunks
+    int width = 0;
+    int height = 0;
+    bool ret = false;
+    const auto chunkNumbers = getChunkNumbers(data);
+    ccstd::vector<unsigned char *> dataBuffers;
+    dataBuffers.resize(chunkNumbers);
+    _mipmapLevelDataSize.resize(chunkNumbers);
+    uint32_t dstDataLen = 0;
+    for (uint32_t i = 0; i < chunkNumbers; ++i) {
+        const auto *chunk = getChunk(data, i);
+        const auto dataLength = getChunkSizes(data, i);
+        if (_data) free(_data);
+        ret = initWithImageData(chunk, dataLength);
+
+        if (i == 0) {
+            width = _width;
+            height = _height;
+        }
+
+        dstDataLen += _dataLen;
+        _mipmapLevelDataSize[i] = _dataLen;
+        dataBuffers[i] = static_cast<unsigned char *>(malloc(_dataLen * sizeof(unsigned char)));
+        memcpy(dataBuffers[i], _data, _dataLen);
+
+        if (!ret) break;
+    }
+
+    auto *dstData = static_cast<unsigned char *>(malloc(dstDataLen * sizeof(unsigned char)));
+    uint32_t byteOffset = 0;
+    for (uint32_t i = 0; i < chunkNumbers; ++i) {
+        memcpy(dstData + byteOffset, dataBuffers[i], _mipmapLevelDataSize[i]);
+        byteOffset += _mipmapLevelDataSize[i];
+        free(dataBuffers[i]);
+    }
+
+    _width = width;
+    _height = height;
+    if (_data) free(_data);
+    _data = dstData;
+    _dataLen = dstDataLen;
+
+    return ret;
 }
 
 bool Image::initWithPVRData(const unsigned char *data, uint32_t dataLen) {
@@ -941,6 +994,189 @@ bool Image::initWithRawData(const unsigned char *data, uint32_t /*dataLen*/, int
         ret = true;
     } while (false);
 
+    return ret;
+}
+
+bool Image::saveToFile(const std::string &filename, bool isToRGB) {
+    //only support for Image::PixelFormat::RGB888 or Image::PixelFormat::RGBA8888 uncompressed data
+    if (isCompressed() || (_renderFormat != gfx::Format::RGB8 && _renderFormat != gfx::Format::RGBA8)) {
+        CC_LOG_DEBUG("saveToFile: Image: saveToFile is only support for gfx::Format::RGB8 or gfx::Format::RGBA8 uncompressed data for now");
+        return false;
+    }
+
+    std::string fileExtension = FileUtils::getInstance()->getFileExtension(filename);
+
+    if (fileExtension == ".png") {
+        return saveImageToPNG(filename, isToRGB);
+    }
+    if (fileExtension == ".jpg") {
+        return saveImageToJPG(filename);
+    }
+    CC_LOG_DEBUG("saveToFile: Image: saveToFile no support file extension(only .png or .jpg) for file: %s", filename.c_str());
+    return false;
+}
+
+bool Image::saveImageToPNG(const std::string &filePath, bool isToRGB) {
+    bool ret = false;
+
+    FILE *fp{nullptr};
+    png_structp pngPtr{nullptr};
+    png_infop infoPtr{nullptr};
+    png_colorp palette{nullptr};
+    png_bytep *rowPointers{nullptr};
+    const bool hasAlpha = gfx::GFX_FORMAT_INFOS[static_cast<int>(_renderFormat)].hasAlpha;
+    do {
+        // Init png structure and png ptr
+        pngPtr = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+        CC_BREAK_IF(!pngPtr);
+        if (setjmp(png_jmpbuf(pngPtr))) {
+            break;
+        }
+        infoPtr = png_create_info_struct(pngPtr);
+        CC_BREAK_IF(!infoPtr);
+        // Start open file
+        fp = fopen(FileUtils::getInstance()->getSuitableFOpen(filePath).c_str(), "wb");
+        CC_BREAK_IF(!fp);
+        png_init_io(pngPtr, fp);
+        const auto mask = (!isToRGB && hasAlpha) ? PNG_COLOR_TYPE_RGB_ALPHA : PNG_COLOR_TYPE_RGB;
+        png_set_IHDR(pngPtr, infoPtr, _width, _height, 8, mask,
+                     PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE);
+
+        palette = static_cast<png_colorp>(png_malloc(pngPtr, PNG_MAX_PALETTE_LENGTH * sizeof(png_color)));
+        CC_BREAK_IF(!palette);
+        png_set_PLTE(pngPtr, infoPtr, palette, PNG_MAX_PALETTE_LENGTH);
+
+        png_write_info(pngPtr, infoPtr);
+
+        png_set_packing(pngPtr);
+
+        //row_pointers = (png_bytep *)png_malloc(png_ptr, _height * sizeof(png_bytep));
+        rowPointers = static_cast<png_bytep *>(CC_MALLOC(_height * sizeof(png_bytep)));
+        CC_BREAK_IF(!rowPointers);
+
+        if (!hasAlpha) {
+            for (int i = 0; i < _height; i++) {
+                rowPointers[i] = static_cast<png_bytep>(_data) + i * _width * 3;
+            }
+            png_write_image(pngPtr, rowPointers);
+        } else {
+            if (isToRGB) {
+                auto *tempData = static_cast<unsigned char *>(CC_MALLOC(_width * _height * 3 * sizeof(unsigned char)));
+                if (nullptr == tempData) {
+                    break;
+                }
+                auto *dst = tempData;
+                auto *src = _data;
+                for (int t = 0; t < _width * _height; t++) {
+                    memcpy(dst, src, 3);
+                    dst += 3;
+                    src += 4;
+                }
+
+                for (int i = 0; i < _height; i++) {
+                    rowPointers[i] = static_cast<png_bytep>(tempData) + i * _width * 3;
+                }
+                if (tempData != nullptr) {
+                    CC_FREE(tempData);
+                }
+                png_write_image(pngPtr, rowPointers);
+            } else {
+                for (int i = 0; i < _height; i++) {
+                    rowPointers[i] = static_cast<png_bytep>(_data) + i * _width * 4 /*Bytes per pixel*/;
+                }
+                png_write_image(pngPtr, rowPointers);
+            }
+        }
+
+        png_write_end(pngPtr, infoPtr);
+        ret = true;
+    } while (false);
+
+    /*Later free for all functions*/
+    if (rowPointers) {
+        free(rowPointers);
+        rowPointers = nullptr;
+    }
+    if (palette) {
+        png_free(pngPtr, palette);
+    }
+    if (infoPtr) {
+        png_destroy_write_struct(&pngPtr, &infoPtr);
+    }
+    if (fp) {
+        fclose(fp);
+    }
+    if (pngPtr) {
+        png_destroy_write_struct(&pngPtr, nullptr);
+    }
+    return ret;
+}
+
+bool Image::saveImageToJPG(const std::string &filePath) {
+    bool ret = false;
+    do {
+        struct jpeg_compress_struct cinfo;
+        struct jpeg_error_mgr jerr;
+        FILE *outfile;          /* target file */
+        JSAMPROW rowPointer[1]; /* pointer to JSAMPLE row[s] */
+        int rowStride;          /* physical row width in image buffer */
+
+        cinfo.err = jpeg_std_error(&jerr);
+        /* Now we can initialize the JPEG compression object. */
+        jpeg_create_compress(&cinfo);
+
+        CC_BREAK_IF((outfile = fopen(FileUtils::getInstance()->getSuitableFOpen(filePath).c_str(), "wb")) == nullptr);
+
+        jpeg_stdio_dest(&cinfo, outfile);
+
+        cinfo.image_width = _width; /* image width and height, in pixels */
+        cinfo.image_height = _height;
+        cinfo.input_components = 3;     /* # of color components per pixel */
+        cinfo.in_color_space = JCS_RGB; /* colorspace of input image */
+
+        jpeg_set_defaults(&cinfo);
+        jpeg_set_quality(&cinfo, 90, TRUE);
+
+        jpeg_start_compress(&cinfo, TRUE);
+
+        rowStride = _width * 3; /* JSAMPLEs per row in image_buffer */
+        const bool hasAlpha = gfx::GFX_FORMAT_INFOS[static_cast<int>(_renderFormat)].hasAlpha;
+
+        if (hasAlpha) {
+            auto *tempData = static_cast<unsigned char *>(CC_MALLOC(_width * _height * 3 * sizeof(unsigned char)));
+            if (nullptr == tempData) {
+                jpeg_finish_compress(&cinfo);
+                jpeg_destroy_compress(&cinfo);
+                fclose(outfile);
+                break;
+            }
+            auto *dst = tempData;
+            auto *src = _data;
+            for (int t = 0; t < _width * _height; t++) {
+                memcpy(dst, src, 3);
+                dst += 3;
+                src += 4;
+            }
+            while (cinfo.next_scanline < cinfo.image_height) {
+                rowPointer[0] = &tempData[cinfo.next_scanline * rowStride];
+                (void)jpeg_write_scanlines(&cinfo, rowPointer, 1);
+            }
+            if (tempData != nullptr) {
+                CC_FREE(tempData);
+            }
+        } else {
+            while (cinfo.next_scanline < cinfo.image_height) {
+                rowPointer[0] = &_data[cinfo.next_scanline * rowStride];
+                (void)jpeg_write_scanlines(&cinfo, rowPointer, 1);
+            }
+        }
+
+        jpeg_finish_compress(&cinfo);
+        fclose(outfile);
+        jpeg_destroy_compress(&cinfo);
+
+        ret = true;
+    } while (false);
     return ret;
 }
 
